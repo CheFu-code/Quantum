@@ -39,6 +39,7 @@ export type StoredMessage = {
   id: string;
   role: Role;
   content: string;
+  generatedImages?: GeneratedImage[];
   timestamp: string;
 };
 
