@@ -1,0 +1,28 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="quantum-main" x1="73" y1="55" x2="439" y2="457" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ab4f8"/>
+      <stop offset="0.5" stop-color="#c58af9"/>
+      <stop offset="1" stop-color="#f28b82"/>
+    </linearGradient>
+    <linearGradient id="quantum-accent" x1="91" y1="366" x2="439" y2="146" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#81c995"/>
+      <stop offset="0.45" stop-color="#8ab4f8"/>
+      <stop offset="1" stop-color="#c58af9"/>
+    </linearGradient>
+    <filter id="quantum-glow" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="28" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.54 0 0 0 0 0.7 0 0 0 0 0.97 0 0 0 0.55 0"/>
+      <feBlend in="SourceGraphic"/>
+    </filter>
+  </defs>
+  <circle cx="256" cy="256" r="205" fill="url(#quantum-main)" opacity="0.96" filter="url(#quantum-glow)"/>
+  <circle cx="256" cy="256" r="183" fill="#0d0f14" fill-opacity="0.62"/>
+  <path d="M80 276C147.7 167.2 272.1 110.5 367.2 147.1C446.8 177.7 456 261.8 390.1 323.6C323.3 386.1 208.9 399.5 125.7 351.4" stroke="url(#quantum-accent)" stroke-width="24.7" stroke-linecap="round" opacity="0.82"/>
+  <path d="M93.3 204.8C159.1 314.5 278 383.1 370.3 354.4C442.5 331.9 456.2 260 401.3 202C345.9 143.1 242.2 120.2 152.6 150.2" stroke="white" stroke-opacity="0.36" stroke-width="20.1" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="98.7" fill="#0d0f14" stroke="white" stroke-opacity="0.2" stroke-width="16.5"/>
+  <path d="M256 340.1C302.4 340.1 340.1 302.4 340.1 256C340.1 209.6 302.4 171.9 256 171.9C209.6 171.9 171.9 209.6 171.9 256C171.9 302.4 209.6 340.1 256 340.1Z" stroke="white" stroke-width="30.2" stroke-linecap="round" opacity="0.94"/>
+  <path d="M318.2 319.1L372.2 373.1" stroke="white" stroke-width="31.1" stroke-linecap="round" opacity="0.92"/>
+  <circle cx="382.1" cy="159.1" r="23.8" fill="#fdd663"/>
+  <circle cx="134.4" cy="355.7" r="15.5" fill="#81c995" opacity="0.95"/>
+</svg>

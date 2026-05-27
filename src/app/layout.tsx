@@ -26,6 +26,15 @@ export const metadata: Metadata = {
   description:
     "Quantum is a fast, professional AI chat workspace from CheFu for focused research, coding, writing, and analysis.",
   applicationName: "Quantum",
+  icons: {
+    icon: [
+      {
+        url: "/quantum-logo.svg",
+        type: "image/svg+xml",
+      },
+    ],
+    shortcut: "/quantum-logo.svg",
+  },
   keywords: [
     "Quantum",
     "CheFu",

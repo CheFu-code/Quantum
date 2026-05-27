@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 import {
   Plus,
   Search,
@@ -29,8 +29,11 @@ import {
   LogIn,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Role = "user" | "assistant";
+type AuthStatus = "checking" | "authenticated" | "guest";
 
 interface Message {
   id: string;
@@ -40,15 +43,31 @@ interface Message {
   thinking?: boolean;
 }
 
-interface Conversation {
+interface ChatThread {
   id: string;
   title: string;
   preview: string;
   timestamp: Date;
   starred?: boolean;
+  messages: Message[];
 }
 
-const DEMO_NOW = new Date("2026-05-27T12:00:00.000Z");
+type StoredMessage = Omit<Message, "timestamp"> & { timestamp: string };
+type StoredThread = Omit<ChatThread, "timestamp" | "messages"> & {
+  timestamp: string;
+  messages: StoredMessage[];
+};
+
+type SessionUser = {
+  uid: string;
+  email: string;
+  roles?: string[];
+  displayName?: string | null;
+};
+
+const STORAGE_KEY = "quantum-chat-threads";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefuinc.com";
 const CHEFU_ACCOUNT_URL =
   process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://chefuinc.com";
 const QUANTUM_APP_URL =
@@ -58,17 +77,11 @@ const CHEFU_LOGIN_HREF = `${CHEFU_ACCOUNT_URL.replace(
   "",
 )}/login?app=quantum&returnTo=${encodeURIComponent(QUANTUM_APP_URL)}`;
 
-function demoDate(offsetMs: number) {
-  return new Date(DEMO_NOW.getTime() - offsetMs);
+function apiUrl(path: string) {
+  return `${API_BASE_URL.replace(/\/$/, "")}${
+    path.startsWith("/") ? path : `/${path}`
+  }`;
 }
-
-const SAMPLE_CONVERSATIONS: Conversation[] = [
-  { id: "1", title: "Quantum computing overview", preview: "Explain the fundamental principles...", timestamp: demoDate(1000 * 60 * 5), starred: true },
-  { id: "2", title: "React architecture patterns", preview: "What are the best patterns for...", timestamp: demoDate(1000 * 60 * 60 * 2) },
-  { id: "3", title: "Climate change data analysis", preview: "Analyze the CO2 emission trends...", timestamp: demoDate(1000 * 60 * 60 * 24) },
-  { id: "4", title: "Neural network optimization", preview: "How do I improve training speed...", timestamp: demoDate(1000 * 60 * 60 * 48) },
-  { id: "5", title: "Protein folding mechanisms", preview: "Describe how AlphaFold2 works...", timestamp: demoDate(1000 * 60 * 60 * 72) },
-];
 
 const SUGGESTIONS = [
   { icon: Brain, label: "Explain dark matter", color: "#8ab4f8" },
@@ -83,41 +96,162 @@ const MODELS = [
   { id: "flash", name: "Quantum Flash 2.0", badge: "Fast", color: "#81c995" },
 ];
 
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: "1",
-    role: "user",
-    content: "What are the most significant breakthroughs in AI research from the past year?",
-    timestamp: demoDate(1000 * 60 * 4),
+const markdownComponents: Components = {
+  p({ children }) {
+    return <p className="break-words">{children}</p>;
   },
-  {
-    id: "2",
-    role: "assistant",
-    content: `The past year has seen several remarkable breakthroughs that are reshaping the AI landscape:\n\n**1. Multimodal Reasoning at Scale**\nLarge models can now seamlessly reason across text, images, audio, and video in a single pass - not as separate pipelines bolted together, but as genuinely unified representations. This enables tasks like watching a video and debugging the code shown on screen simultaneously.\n\n**2. Long-Context Understanding**\nContext windows have expanded dramatically - from 32K to over 1M tokens. Models can now ingest entire codebases, legal contracts, or research archives and answer nuanced questions that require synthesizing information across millions of words.\n\n**3. Efficient Inference Architectures**\nTechniques like speculative decoding, mixture-of-experts routing, and quantization-aware training have cut inference costs by 10-100x. This makes frontier-quality reasoning accessible on edge devices and at consumer scale.\n\n**4. Chain-of-Thought Emergence**\nPre-training on reasoning traces has shown that models can now self-correct mid-generation, backtrack on wrong assumptions, and produce verifiably correct solutions to competition-level mathematics and formal proofs.\n\n**5. Agentic Task Completion**\nModels are increasingly deployed as autonomous agents that call tools, browse the web, write and execute code, and coordinate multi-step workflows with minimal human intervention.`,
-    timestamp: demoDate(1000 * 60 * 3),
+  h1({ children }) {
+    return <h2 className="pt-1 text-lg font-semibold leading-snug text-foreground">{children}</h2>;
   },
-];
+  h2({ children }) {
+    return <h3 className="pt-1 text-base font-semibold leading-snug text-foreground">{children}</h3>;
+  },
+  h3({ children }) {
+    return <h4 className="pt-1 text-sm font-semibold leading-snug text-foreground">{children}</h4>;
+  },
+  ul({ children }) {
+    return <ul className="ml-5 list-disc space-y-1">{children}</ul>;
+  },
+  ol({ children }) {
+    return <ol className="ml-5 list-decimal space-y-1">{children}</ol>;
+  },
+  li({ children }) {
+    return <li className="pl-1">{children}</li>;
+  },
+  blockquote({ children }) {
+    return (
+      <blockquote className="border-l-2 border-primary/50 pl-3 text-muted-foreground">
+        {children}
+      </blockquote>
+    );
+  },
+  pre({ children }) {
+    return <>{children}</>;
+  },
+  a({ children, href }) {
+    const safeUrl = safeHref(href || "");
 
-function QuantumLogo() {
+    if (!safeUrl) return <span>{children}</span>;
+
+    return (
+      <a
+        href={safeUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="font-medium text-primary underline-offset-4 hover:underline"
+      >
+        {children}
+      </a>
+    );
+  },
+  code({ children, className }) {
+    const language = /language-([\w-]+)/.exec(className || "")?.[1] || "";
+    const value = String(children).replace(/\n$/, "");
+
+    if (!language && !String(children).includes("\n")) {
+      return (
+        <code className="rounded-md border border-border/70 bg-muted/60 px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">
+          {children}
+        </code>
+      );
+    }
+
+    return (
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-[#080b12]">
+        {language && (
+          <div className="border-b border-border/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            {language}
+          </div>
+        )}
+        <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-slate-100">
+          <code className={className}>{value}</code>
+        </pre>
+      </div>
+    );
+  },
+  table({ children }) {
+    return (
+      <div className="overflow-x-auto rounded-xl border border-border/70">
+        <table className="min-w-full border-collapse text-left text-xs">{children}</table>
+      </div>
+    );
+  },
+  th({ children }) {
+    return <th className="border-b border-border/70 bg-muted/50 px-3 py-2 font-semibold">{children}</th>;
+  },
+  td({ children }) {
+    return <td className="border-b border-border/50 px-3 py-2 align-top">{children}</td>;
+  },
+};
+
+function QuantumLogo({ className = "size-7" }: { className?: string }) {
+  const gradientId = useId();
+  const accentId = useId();
+  const glowId = useId();
+
   return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <svg className={className} viewBox="0 0 28 28" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="gemini-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id={gradientId} x1="4" y1="3" x2="24" y2="25" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#8ab4f8" />
           <stop offset="50%" stopColor="#c58af9" />
           <stop offset="100%" stopColor="#f28b82" />
         </linearGradient>
+        <linearGradient id={accentId} x1="5" y1="20" x2="24" y2="8" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#81c995" />
+          <stop offset="45%" stopColor="#8ab4f8" />
+          <stop offset="100%" stopColor="#c58af9" />
+        </linearGradient>
+        <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="2" result="blur" />
+          <feColorMatrix
+            in="blur"
+            type="matrix"
+            values="0 0 0 0 0.54 0 0 0 0 0.7 0 0 0 0 0.97 0 0 0 0.55 0"
+          />
+          <feBlend in="SourceGraphic" />
+        </filter>
       </defs>
+      <circle
+        cx="14"
+        cy="14"
+        r="11.2"
+        fill={`url(#${gradientId})`}
+        opacity="0.96"
+        filter={`url(#${glowId})`}
+      />
+      <circle cx="14" cy="14" r="10" fill="#0d0f14" fillOpacity="0.62" />
       <path
-        d="M14 2C14 2 7.5 8 7.5 14C7.5 20 14 26 14 26C14 26 20.5 20 20.5 14C20.5 8 14 2 14 2Z"
-        fill="url(#gemini-grad)"
-        opacity="0.9"
+        d="M4.4 15.1C8.1 9.15 14.9 6.05 20.1 8.05C24.45 9.72 24.95 14.32 21.35 17.7C17.7 21.12 11.45 21.85 6.9 19.22"
+        stroke={`url(#${accentId})`}
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        opacity="0.82"
       />
       <path
-        d="M2 14C2 14 8 7.5 14 7.5C20 7.5 26 14 26 14C26 14 20 20.5 14 20.5C8 20.5 2 14 2 14Z"
-        fill="url(#gemini-grad)"
-        opacity="0.7"
+        d="M5.1 11.2C8.7 17.2 15.2 20.95 20.25 19.38C24.2 18.15 24.95 14.22 21.95 11.05C18.92 7.83 13.25 6.58 8.35 8.22"
+        stroke="rgba(255,255,255,0.36)"
+        strokeWidth="1.1"
+        strokeLinecap="round"
+        opacity="0.78"
       />
+      <circle cx="14" cy="14" r="5.4" fill="#0d0f14" stroke="rgba(255,255,255,0.2)" strokeWidth="0.9" />
+      <path
+        d="M14 18.6C16.54 18.6 18.6 16.54 18.6 14C18.6 11.46 16.54 9.4 14 9.4C11.46 9.4 9.4 11.46 9.4 14C9.4 16.54 11.46 18.6 14 18.6Z"
+        stroke="white"
+        strokeWidth="1.65"
+        strokeLinecap="round"
+        opacity="0.94"
+      />
+      <path
+        d="M17.4 17.45L20.35 20.4"
+        stroke="white"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        opacity="0.92"
+      />
+      <circle cx="20.9" cy="8.7" r="1.3" fill="#fdd663" />
+      <circle cx="7.35" cy="19.45" r="0.85" fill="#81c995" opacity="0.95" />
     </svg>
   );
 }
@@ -138,45 +272,261 @@ function ThinkingDots() {
 }
 
 function MessageContent({ content }: { content: string }) {
-  const parts = content.split(/(\*\*[^*]+\*\*)/g);
   return (
-    <div className="text-sm leading-relaxed text-foreground/90">
-      {parts.map((part, i) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return <strong key={i} className="text-foreground font-semibold">{part.slice(2, -2)}</strong>;
-        }
-        return part.split("\n").map((line, j) => (
-          <span key={`${i}-${j}`}>
-            {j > 0 && <br />}
-            {line}
-          </span>
-        ));
-      })}
+    <div className="space-y-3 text-sm leading-relaxed text-foreground/90">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+        components={markdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
 
+function safeHref(value: string) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:", "mailto:"].includes(url.protocol)
+      ? url.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function formatTime(date: Date) {
-  const diff = DEMO_NOW.getTime() - date.getTime();
+  const diff = Date.now() - date.getTime();
   if (diff < 1000 * 60) return "Just now";
   if (diff < 1000 * 60 * 60) return `${Math.floor(diff / (1000 * 60))}m ago`;
   if (diff < 1000 * 60 * 60 * 24) return `${Math.floor(diff / (1000 * 60 * 60))}h ago`;
   return `${Math.floor(diff / (1000 * 60 * 60 * 24))}d ago`;
 }
 
+function createId(prefix: string) {
+  const randomId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return `${prefix}-${randomId}`;
+}
+
+function threadTitle(input: string) {
+  const words = input
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 7)
+    .join(" ");
+
+  if (!words) return "New conversation";
+  return words.length > 46 ? `${words.slice(0, 43)}...` : words;
+}
+
+function previewText(input: string) {
+  const normalized = input.replace(/\s+/g, " ").trim();
+  return normalized.length > 64 ? `${normalized.slice(0, 61)}...` : normalized;
+}
+
+function sortThreads(threads: ChatThread[]) {
+  return [...threads].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+}
+
+function parseStoredThreads(value: string | null): ChatThread[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value) as StoredThread[];
+    if (!Array.isArray(parsed)) return [];
+
+    return sortThreads(
+      parsed
+        .filter((thread) => thread.id && Array.isArray(thread.messages))
+        .map((thread) => ({
+          ...thread,
+          timestamp: new Date(thread.timestamp),
+          messages: thread.messages.map((message) => ({
+            ...message,
+            timestamp: new Date(message.timestamp),
+          })),
+        })),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function toStoredThreads(threads: ChatThread[]) {
+  return threads.map((thread): StoredThread => ({
+    ...thread,
+    timestamp: thread.timestamp.toISOString(),
+    messages: thread.messages.map((message) => ({
+      ...message,
+      timestamp: message.timestamp.toISOString(),
+    })),
+  }));
+}
+
+function sessionHeaders() {
+  return {
+    "x-chefu-app": "quantum",
+  };
+}
+
+function clearLocalConversationStorage() {
+  Object.keys(window.localStorage)
+    .filter((key) => key === STORAGE_KEY || key.startsWith(`${STORAGE_KEY}:`))
+    .forEach((key) => window.localStorage.removeItem(key));
+}
+
+async function loadSavedConversations() {
+  const response = await fetch(apiUrl("/quantum/conversations"), {
+    credentials: "include",
+    headers: sessionHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not load saved conversations.");
+  }
+
+  const data = (await response.json().catch(() => null)) as {
+    conversations?: StoredThread[];
+  } | null;
+
+  return parseStoredThreads(JSON.stringify(data?.conversations || []));
+}
+
+async function saveSavedConversations(threads: ChatThread[]) {
+  const response = await fetch(apiUrl("/quantum/conversations"), {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...sessionHeaders(),
+    },
+    body: JSON.stringify({
+      conversations: toStoredThreads(threads),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not save conversations.");
+  }
+}
+
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [threads, setThreads] = useState<ChatThread[]>([]);
   const [input, setInput] = useState("");
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeConv, setActiveConv] = useState("1");
+  const [activeConv, setActiveConv] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeThread = threads.find((thread) => thread.id === activeConv);
+  const messages = activeThread?.messages || [];
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkSession() {
+      try {
+        const response = await fetch(apiUrl("/auth/me"), {
+          credentials: "include",
+          headers: sessionHeaders(),
+        });
+
+        if (cancelled) return;
+
+        if (!response.ok) {
+          setSessionUser(null);
+          setAuthStatus("guest");
+          return;
+        }
+
+        const data = (await response.json().catch(() => null)) as {
+          user?: SessionUser;
+        } | null;
+
+        if (!data?.user?.email || !data.user.uid) {
+          setSessionUser(null);
+          setAuthStatus("guest");
+          return;
+        }
+
+        setSessionUser(data.user);
+        setAuthStatus("authenticated");
+      } catch {
+        if (!cancelled) {
+          setSessionUser(null);
+          setAuthStatus("guest");
+        }
+      }
+    }
+
+    void checkSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus === "checking") return;
+
+    if (authStatus === "guest") {
+      clearLocalConversationStorage();
+      setThreads([]);
+      setActiveConv("");
+      setHasHydrated(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadConversations() {
+      try {
+        const savedThreads = await loadSavedConversations();
+        if (cancelled) return;
+        setThreads(savedThreads);
+        setActiveConv(savedThreads[0]?.id || "");
+      } catch {
+        if (cancelled) return;
+        setThreads([]);
+        setActiveConv("");
+      } finally {
+        if (!cancelled) setHasHydrated(true);
+      }
+    }
+
+    setHasHydrated(false);
+    void loadConversations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus, sessionUser?.uid]);
+
+  useEffect(() => {
+    if (!hasHydrated || authStatus !== "authenticated") return;
+    const timeout = window.setTimeout(() => {
+      void saveSavedConversations(threads).catch(error => {
+        console.error("Failed to save Quantum conversations:", error);
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [authStatus, hasHydrated, threads]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -195,32 +545,122 @@ export default function App() {
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
+    const threadId = activeConv || createId("thread");
+    const now = new Date();
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: createId("message"),
       role: "user",
       content: text,
-      timestamp: new Date(),
+      timestamp: now,
     };
-    setMessages((prev) => [...prev, userMsg]);
+
+    if (!activeConv) setActiveConv(threadId);
+    setThreads((currentThreads) => {
+      const existingThread = currentThreads.find((thread) => thread.id === threadId);
+      const nextThreads = existingThread
+        ? currentThreads.map((thread) =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  messages: [...thread.messages, userMsg],
+                  preview: previewText(text),
+                  timestamp: now,
+                }
+              : thread,
+          )
+        : [
+            {
+              id: threadId,
+              messages: [userMsg],
+              preview: previewText(text),
+              starred: false,
+              timestamp: now,
+              title: threadTitle(text),
+            },
+            ...currentThreads,
+          ];
+
+      return sortThreads(nextThreads);
+    });
     setIsTyping(true);
 
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: text,
+          model: selectedModel.id,
+          history: messages.slice(-8).map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+        }),
+      });
 
-    const responses = [
-      "That's a fascinating question. Let me break it down carefully.\n\nThe core insight here is that complexity often emerges from surprisingly simple rules. When we look at this from first principles, we find that the underlying structure reveals patterns that are both elegant and practically useful.\n\n**Key considerations:**\n- The immediate implications are significant for current practice\n- Secondary effects often outweigh the primary ones\n- Historical analogues suggest a 3-5 year adoption curve\n\nWould you like me to go deeper on any particular aspect?",
-      "Excellent question - this sits at the intersection of several important ideas.\n\nHere's my analysis:\n\n**Short answer:** Yes, with important caveats.\n\n**Longer answer:** The evidence points strongly in one direction, but the second-order effects are less clear. Recent research from 2024 suggests that the conventional wisdom here needs updating.\n\nI can run through the specific data points if that would be helpful.",
-      "I can help with that. Let me think through this systematically.\n\nThe problem you're describing has three distinct components:\n1. **The structural layer** - how the pieces fit together architecturally\n2. **The behavioral layer** - what happens at runtime and under load\n3. **The evolutionary layer** - how this changes over time as requirements shift\n\nMost solutions focus only on (1) and pay the price later with (2) and (3). A more robust approach addresses all three from the start.",
-    ];
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || "Quantum could not generate a response.",
+        );
+      }
 
-    const reply = responses[Math.floor(Math.random() * responses.length)];
-    const assistantMsg: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: reply,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, assistantMsg]);
-    setIsTyping(false);
+      const data = (await response.json()) as {
+        message?: string;
+        createdAt?: string;
+      };
+      const reply = data.message?.trim();
+
+      if (!reply) {
+        throw new Error("Quantum returned an empty response.");
+      }
+
+      const assistantMsg: Message = {
+        id: createId("message"),
+        role: "assistant",
+        content: reply,
+        timestamp: data.createdAt ? new Date(data.createdAt) : new Date(),
+      };
+
+      setThreads((currentThreads) =>
+        sortThreads(
+          currentThreads.map((thread) =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  messages: [...thread.messages, assistantMsg],
+                  preview: previewText(reply),
+                  timestamp: assistantMsg.timestamp,
+                }
+              : thread,
+          ),
+        ),
+      );
+    } catch (error) {
+      const fallbackMsg: Message = {
+        id: createId("message"),
+        role: "assistant",
+        content:
+          error instanceof Error
+            ? `I could not complete that request: ${error.message}`
+            : "I could not complete that request. Please try again.",
+        timestamp: new Date(),
+      };
+
+      setThreads((currentThreads) =>
+        currentThreads.map((thread) =>
+          thread.id === threadId
+            ? { ...thread, messages: [...thread.messages, fallbackMsg] }
+            : thread,
+        ),
+      );
+    } finally {
+      setIsTyping(false);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -236,7 +676,7 @@ export default function App() {
     setTimeout(() => setCopiedId(null), 2000);
   }
 
-  const filteredConvs = SAMPLE_CONVERSATIONS.filter((c) =>
+  const filteredConvs = threads.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -264,7 +704,11 @@ export default function App() {
             {/* New chat */}
             <div className="px-3 pt-3 pb-2">
               <button
-                onClick={() => { setMessages([]); setActiveConv(""); }}
+                onClick={() => {
+                  setActiveConv("");
+                  setInput("");
+                  setLikedIds(new Set());
+                }}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 hover:bg-muted/60 text-foreground/80 hover:text-foreground border border-border/50 hover:border-border"
               >
                 <Plus size={15} strokeWidth={2.5} />
@@ -305,9 +749,19 @@ export default function App() {
                   <Clock size={10} className="text-muted-foreground" />
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Recent</span>
                 </div>
-                {filteredConvs.filter((c) => !c.starred).map((conv) => (
-                  <ConvItem key={conv.id} conv={conv} active={activeConv === conv.id} onClick={() => setActiveConv(conv.id)} />
-                ))}
+                {filteredConvs.filter((c) => !c.starred).length > 0 ? (
+                  filteredConvs.filter((c) => !c.starred).map((conv) => (
+                    <ConvItem key={conv.id} conv={conv} active={activeConv === conv.id} onClick={() => setActiveConv(conv.id)} />
+                  ))
+                ) : (
+                  <p className="px-3 py-2 text-xs leading-5 text-muted-foreground/70">
+                    {authStatus === "guest"
+                      ? "Temporary chats will appear here while this page is open. Sign in to save conversations."
+                      : authStatus === "checking"
+                        ? "Checking saved conversations..."
+                        : "Your conversations will appear here after you send a message."}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -390,13 +844,23 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          <a
-            href={CHEFU_LOGIN_HREF}
-            className="hidden items-center gap-2 rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-foreground/80 transition-all duration-150 hover:border-primary/40 hover:bg-muted/30 hover:text-foreground sm:flex"
-          >
-            <LogIn size={13} />
-            Sign in
-          </a>
+          {authStatus === "authenticated" ? (
+            <span
+              title={sessionUser?.email}
+              className="hidden items-center gap-2 rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-foreground/80 sm:flex"
+            >
+              <span className="size-1.5 rounded-full bg-[#81c995]" />
+              Saving chats
+            </span>
+          ) : (
+            <a
+              href={CHEFU_LOGIN_HREF}
+              className="hidden items-center gap-2 rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-foreground/80 transition-all duration-150 hover:border-primary/40 hover:bg-muted/30 hover:text-foreground sm:flex"
+            >
+              <LogIn size={13} />
+              {authStatus === "checking" ? "Checking" : "Sign in"}
+            </a>
+          )}
 
           <button className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all duration-150">
             <MoreHorizontal size={16} />
@@ -497,7 +961,7 @@ export default function App() {
   );
 }
 
-function ConvItem({ conv, active, onClick }: { conv: Conversation; active: boolean; onClick: () => void }) {
+function ConvItem({ conv, active, onClick }: { conv: ChatThread; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -594,17 +1058,7 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
         className="mb-6"
       >
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto" style={{ background: "linear-gradient(135deg, rgba(138,180,248,0.15), rgba(197,138,249,0.15))", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <svg width="36" height="36" viewBox="0 0 28 28" fill="none">
-            <defs>
-              <linearGradient id="hero-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#8ab4f8" />
-                <stop offset="50%" stopColor="#c58af9" />
-                <stop offset="100%" stopColor="#f28b82" />
-              </linearGradient>
-            </defs>
-            <path d="M14 2C14 2 7.5 8 7.5 14C7.5 20 14 26 14 26C14 26 20.5 20 20.5 14C20.5 8 14 2 14 2Z" fill="url(#hero-grad)" opacity="0.9" />
-            <path d="M2 14C2 14 8 7.5 14 7.5C20 7.5 26 14 26 14C26 14 20 20.5 14 20.5C8 20.5 2 14 2 14Z" fill="url(#hero-grad)" opacity="0.7" />
-          </svg>
+          <QuantumLogo className="size-9" />
         </div>
       </motion.div>
 
