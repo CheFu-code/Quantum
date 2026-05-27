@@ -13,9 +13,12 @@ import { ThinkingDots } from "./ThinkingDots";
 type ChatMessagesProps = {
   messages: Message[];
   isTyping: boolean;
+  autoScroll: boolean;
   copiedId: string | null;
+  compactMessages: boolean;
   likedIds: Set<string>;
   messagesEndRef: RefObject<HTMLDivElement | null>;
+  showTimestamps: boolean;
   onCopy: (id: string, content: string) => void;
   onRegenerate: (messageId: string) => void;
   onToggleLike: (messageId: string) => void;
@@ -25,9 +28,12 @@ type ChatMessagesProps = {
 export function ChatMessages({
   messages,
   isTyping,
+  autoScroll,
   copiedId,
+  compactMessages,
   likedIds,
   messagesEndRef,
+  showTimestamps,
   onCopy,
   onRegenerate,
   onToggleLike,
@@ -55,6 +61,8 @@ export function ChatMessages({
   }, []);
 
   useEffect(() => {
+    if (!autoScroll) return;
+
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -62,7 +70,7 @@ export function ChatMessages({
     if (distanceFromBottom < 260) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [isTyping, messages, messagesEndRef]);
+  }, [autoScroll, isTyping, messages, messagesEndRef]);
 
   function scrollToLatest() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -78,9 +86,11 @@ export function ChatMessages({
             <MessageBubble
               key={message.id}
               msg={message}
+              compact={compactMessages}
               onCopy={onCopy}
               copied={copiedId === message.id}
               liked={likedIds.has(message.id)}
+              showTimestamp={showTimestamps}
               onLike={() => onToggleLike(message.id)}
               onRegenerate={() => onRegenerate(message.id)}
             />

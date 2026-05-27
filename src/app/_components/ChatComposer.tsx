@@ -10,6 +10,7 @@ type ChatComposerProps = {
   attachments: ImageAttachment[];
   isTyping: boolean;
   authStatus: AuthStatus;
+  enterToSend: boolean;
   webSearchEnabled: boolean;
   isListening: boolean;
   inputNotice: string;
@@ -29,6 +30,7 @@ export function ChatComposer({
   attachments,
   isTyping,
   authStatus,
+  enterToSend,
   webSearchEnabled,
   isListening,
   inputNotice,
@@ -147,7 +149,9 @@ export function ChatComposer({
                 ? "Web search on"
                 : isListening
                   ? "Listening..."
-                  : "Shift+Enter for newline"}
+                  : enterToSend
+                    ? "Shift+Enter for newline"
+                    : "Ctrl+Enter to send"}
             </span>
             <motion.button
               onClick={onSend}

@@ -1,3 +1,5 @@
+import type { ChatPreferences, ResponseStyle } from "./types";
+
 export const MAX_IMAGE_ATTACHMENTS = 4;
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
@@ -52,6 +54,37 @@ export const VOICE_LANGUAGES = [
   { id: "zu-ZA", label: "Zulu" },
 ] as const;
 
+export const RESPONSE_STYLES: Array<{
+  id: ResponseStyle;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "concise",
+    label: "Concise",
+    description: "Short answers with the main point first.",
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    description: "Helpful structure with enough detail for most work.",
+  },
+  {
+    id: "detailed",
+    label: "Detailed",
+    description: "Longer explanations, tradeoffs, and examples.",
+  },
+];
+
+export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
+  autoScroll: true,
+  compactMessages: false,
+  enterToSend: true,
+  responseStyle: "balanced",
+  saveConversations: true,
+  showTimestamps: true,
+};
+
 export function apiUrl(path: string) {
   return `${API_BASE_URL.replace(/\/$/, "")}${
     path.startsWith("/") ? path : `/${path}`
@@ -60,4 +93,10 @@ export function apiUrl(path: string) {
 
 export function resolveStoredModel(value: string | null): QuantumModel {
   return MODELS.find((model) => model.id === value) || MODELS[1];
+}
+
+export function resolveResponseStyle(value: unknown): ResponseStyle {
+  return RESPONSE_STYLES.some((style) => style.id === value)
+    ? (value as ResponseStyle)
+    : DEFAULT_CHAT_PREFERENCES.responseStyle;
 }

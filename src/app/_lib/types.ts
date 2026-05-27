@@ -1,5 +1,15 @@
 export type Role = "user" | "assistant";
 export type AuthStatus = "checking" | "authenticated" | "guest";
+export type ResponseStyle = "balanced" | "concise" | "detailed";
+
+export type ChatPreferences = {
+  autoScroll: boolean;
+  compactMessages: boolean;
+  enterToSend: boolean;
+  responseStyle: ResponseStyle;
+  saveConversations: boolean;
+  showTimestamps: boolean;
+};
 
 export type ImageAttachment = {
   id: string;

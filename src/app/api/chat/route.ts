@@ -14,6 +14,7 @@ type ChatRequest = {
   history?: Array<{ role?: string; content?: string }>;
   message?: string;
   model?: string;
+  responseStyle?: string;
   webSearch?: boolean;
 };
 
@@ -69,7 +70,7 @@ type GeminiPart =
 const MODEL_TIERS = ["flash", "pro", "ultra"] as const;
 type ModelTier = (typeof MODEL_TIERS)[number];
 
-const SYSTEM_PROMPT = [
+const BASE_SYSTEM_PROMPT = [
   "You are Quantum, a polished AI assistant for focused work.",
   "Give clear, useful answers with enough structure to help the user act.",
   "Be concise by default, but expand when the user asks for depth.",
@@ -138,7 +139,7 @@ export async function POST(request: Request) {
 
   const payload: Record<string, unknown> = {
     systemInstruction: {
-      parts: [{ text: SYSTEM_PROMPT }],
+      parts: [{ text: buildSystemPrompt(body.responseStyle) }],
     },
     contents: [
       ...normalizeHistory(body.history),
@@ -255,6 +256,18 @@ function buildGenerationConfig(maxOutputTokens: number, includeImageOutput = fal
 function resolveTier(value?: string): ModelTier {
   const normalized = value?.toLowerCase();
   return MODEL_TIERS.find((tier) => tier === normalized) || "pro";
+}
+
+function buildSystemPrompt(responseStyle?: string) {
+  const normalized = responseStyle?.toLowerCase();
+  const styleInstruction =
+    normalized === "concise"
+      ? "The user prefers concise answers: lead with the answer, avoid unnecessary background, and use compact bullets only when they help."
+      : normalized === "detailed"
+        ? "The user prefers detailed answers: include reasoning, tradeoffs, examples, and practical next steps when useful."
+        : "The user prefers balanced answers: be clear and structured without over-explaining.";
+
+  return `${BASE_SYSTEM_PROMPT}\n${styleInstruction}`;
 }
 
 function resolveModel(tier: ModelTier, includeImageOutput = false) {

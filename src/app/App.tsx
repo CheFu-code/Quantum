@@ -9,11 +9,13 @@ import { SettingsModal } from "./_components/SettingsModal";
 import { TopBar } from "./_components/TopBar";
 import {
   CHEFU_LOGIN_HREF,
+  DEFAULT_CHAT_PREFERENCES,
   MAX_IMAGE_ATTACHMENTS,
   MAX_IMAGE_SIZE,
   MODELS,
   VOICE_LANGUAGES,
   apiUrl,
+  resolveResponseStyle,
   resolveStoredModel,
   type QuantumModel,
 } from "./_lib/constants";
@@ -31,6 +33,7 @@ import {
 import { fileToAttachment, getSpeechRecognition } from "./_lib/input";
 import type {
   AuthStatus,
+  ChatPreferences,
   ChatThread,
   ImageAttachment,
   Message,
@@ -57,6 +60,9 @@ export default function App() {
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState("auto");
+  const [preferences, setPreferences] = useState<ChatPreferences>(
+    DEFAULT_CHAT_PREFERENCES,
+  );
   const [isListening, setIsListening] = useState(false);
   const [inputNotice, setInputNotice] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -148,7 +154,14 @@ export default function App() {
   }, [authStatus, sessionUser?.uid]);
 
   useEffect(() => {
-    if (!hasHydrated || authStatus !== "authenticated") return;
+    if (
+      !hasHydrated ||
+      authStatus !== "authenticated" ||
+      !preferences.saveConversations
+    ) {
+      return;
+    }
+
     const timeout = window.setTimeout(() => {
       void saveSavedConversations(threads).catch(error => {
         console.error("Failed to save Quantum conversations:", error);
@@ -156,7 +169,7 @@ export default function App() {
     }, 700);
 
     return () => window.clearTimeout(timeout);
-  }, [authStatus, hasHydrated, threads]);
+  }, [authStatus, hasHydrated, preferences.saveConversations, threads]);
 
   useEffect(() => {
     return () => {
@@ -170,9 +183,13 @@ export default function App() {
       window.localStorage.getItem("quantum-web-search-enabled") === "true";
     const storedVoiceLanguage =
       window.localStorage.getItem("quantum-voice-language") || "auto";
+    const storedPreferences = parseStoredPreferences(
+      window.localStorage.getItem("quantum-chat-preferences"),
+    );
 
     setSelectedModel(resolveStoredModel(storedModel));
     setWebSearchEnabled(storedWebSearch);
+    setPreferences(storedPreferences);
     setVoiceLanguage(
       VOICE_LANGUAGES.some((language) => language.id === storedVoiceLanguage)
         ? storedVoiceLanguage
@@ -194,6 +211,13 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem("quantum-voice-language", voiceLanguage);
   }, [voiceLanguage]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "quantum-chat-preferences",
+      JSON.stringify(preferences),
+    );
+  }, [preferences]);
 
   useEffect(() => {
     if (authStatus === "authenticated") return;
@@ -329,6 +353,7 @@ export default function App() {
           size,
         })),
         webSearch: webSearchEnabled,
+        responseStyle: preferences.responseStyle,
         history: visibleMessages.slice(-8).map((message) => ({
           role: message.role,
           content: message.content,
@@ -479,7 +504,13 @@ export default function App() {
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    const isSubmitShortcut =
+      e.key === "Enter" &&
+      (preferences.enterToSend
+        ? !e.shiftKey
+        : e.metaKey || e.ctrlKey);
+
+    if (isSubmitShortcut) {
       e.preventDefault();
       sendMessage();
     }
@@ -585,7 +616,18 @@ export default function App() {
     setSelectedModel(MODELS[1]);
     setWebSearchEnabled(false);
     setVoiceLanguage("auto");
+    setPreferences(DEFAULT_CHAT_PREFERENCES);
     setInputNotice("Preferences reset.");
+  }
+
+  function updatePreference<Key extends keyof ChatPreferences>(
+    key: Key,
+    value: ChatPreferences[Key],
+  ) {
+    setPreferences((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
 
   function startNewConversation() {
@@ -692,9 +734,12 @@ export default function App() {
         <ChatMessages
           messages={messages}
           isTyping={isTyping}
+          autoScroll={preferences.autoScroll}
           copiedId={copiedId}
+          compactMessages={preferences.compactMessages}
           likedIds={likedIds}
           messagesEndRef={messagesEndRef}
+          showTimestamps={preferences.showTimestamps}
           onCopy={copyMessage}
           onRegenerate={regenerateResponse}
           onToggleLike={toggleMessageLike}
@@ -706,6 +751,7 @@ export default function App() {
           attachments={attachments}
           isTyping={isTyping}
           authStatus={authStatus}
+          enterToSend={preferences.enterToSend}
           webSearchEnabled={webSearchEnabled}
           isListening={isListening}
           inputNotice={inputNotice}
@@ -726,11 +772,13 @@ export default function App() {
         selectedModel={selectedModel}
         webSearchEnabled={webSearchEnabled}
         voiceLanguage={voiceLanguage}
+        preferences={preferences}
         threadsCount={threads.length}
         onClose={() => setSettingsOpen(false)}
         onSelectModel={setSelectedModel}
         onWebSearchChange={setWebSearchEnabled}
         onVoiceLanguageChange={setVoiceLanguage}
+        onPreferenceChange={updatePreference}
         onExportConversations={exportConversations}
         onClearConversations={clearConversations}
         onResetPreferences={resetPreferences}
@@ -748,4 +796,38 @@ export default function App() {
       )}
     </div>
   );
+}
+
+function parseStoredPreferences(value: string | null): ChatPreferences {
+  if (!value) return DEFAULT_CHAT_PREFERENCES;
+
+  try {
+    const parsed = JSON.parse(value) as Partial<ChatPreferences>;
+
+    return {
+      autoScroll:
+        typeof parsed.autoScroll === "boolean"
+          ? parsed.autoScroll
+          : DEFAULT_CHAT_PREFERENCES.autoScroll,
+      compactMessages:
+        typeof parsed.compactMessages === "boolean"
+          ? parsed.compactMessages
+          : DEFAULT_CHAT_PREFERENCES.compactMessages,
+      enterToSend:
+        typeof parsed.enterToSend === "boolean"
+          ? parsed.enterToSend
+          : DEFAULT_CHAT_PREFERENCES.enterToSend,
+      responseStyle: resolveResponseStyle(parsed.responseStyle),
+      saveConversations:
+        typeof parsed.saveConversations === "boolean"
+          ? parsed.saveConversations
+          : DEFAULT_CHAT_PREFERENCES.saveConversations,
+      showTimestamps:
+        typeof parsed.showTimestamps === "boolean"
+          ? parsed.showTimestamps
+          : DEFAULT_CHAT_PREFERENCES.showTimestamps,
+    };
+  } catch {
+    return DEFAULT_CHAT_PREFERENCES;
+  }
 }
