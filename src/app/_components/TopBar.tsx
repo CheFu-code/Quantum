@@ -1,11 +1,11 @@
 "use client";
 
+import { CheFuUserDropdown } from "@chefu/ui";
 import {
   ChevronDown,
   Download,
   Edit3,
   LogIn,
-  LogOut,
   Menu,
   MoreHorizontal,
   Plus,
@@ -13,7 +13,6 @@ import {
   Star,
   Settings,
   Trash2,
-  UserRound,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, type ReactNode, useState } from "react";
@@ -65,7 +64,6 @@ export function TopBar({
   onSelectModel,
 }: TopBarProps) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
@@ -95,7 +93,6 @@ export function TopBar({
   function openConversationMenu() {
     setConversationMenuOpen((value) => !value);
     setModelMenuOpen(false);
-    setUserMenuOpen(false);
     setIsRenaming(false);
   }
 
@@ -151,7 +148,6 @@ export function TopBar({
           <button
             onClick={() => {
               setModelMenuOpen((value) => !value);
-              setUserMenuOpen(false);
               setConversationMenuOpen(false);
             }}
             className="flex items-center gap-2 pl-3 pr-2.5 py-1.5 rounded-xl border border-border hover:border-primary/40 hover:bg-muted/30 transition-all duration-150 text-xs font-medium text-foreground/80 hover:text-foreground"
@@ -213,64 +209,17 @@ export function TopBar({
         </div>
 
         {authStatus === "authenticated" && sessionUser ? (
-          <div className="relative hidden sm:block">
-            <button
-              type="button"
-              onClick={() => {
-                setUserMenuOpen((value) => !value);
-                setModelMenuOpen(false);
-                setConversationMenuOpen(false);
-              }}
-              className="flex items-center gap-2 rounded-xl border border-border px-2 py-1.5 text-xs font-medium text-foreground/80 transition-all duration-150 hover:border-primary/40 hover:bg-muted/30 hover:text-foreground"
-            >
-              <span className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <UserRound size={13} />
-              </span>
-              <ChevronDown size={12} className="text-muted-foreground" />
-            </button>
-
-            <AnimatePresence>
-              {userMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-                  style={{ boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}
-                >
-                  <div className="border-b border-border px-4 py-3">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {sessionUser.displayName || "CheFu Account"}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {sessionUser.email}
-                    </p>
-                  </div>
-
-
-                  <div className="border-t border-border p-2">
-                    <a
-                      href={CHEFU_ACCOUNT_MANAGE_HREF}
-                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                    >
-                      <UserRound size={13} />
-                      Manage account
-                    </a>
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      disabled={isSigningOut}
-                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                    >
-                      <LogOut size={13} />
-                      {isSigningOut ? "Signing out..." : "Sign out"}
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          <CheFuUserDropdown
+            accountHref={CHEFU_ACCOUNT_MANAGE_HREF}
+            onSignOut={handleSignOut}
+            pendingSignOut={isSigningOut}
+            triggerClassName="hidden sm:flex"
+            user={{
+              displayName: sessionUser.displayName,
+              email: sessionUser.email,
+            }}
+            variant="neutral"
+          />
         ) : (
           <a
             href={CHEFU_LOGIN_HREF}
@@ -420,9 +369,6 @@ export function TopBar({
 
       {modelMenuOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
-      )}
-      {userMenuOpen && (
-        <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
       )}
       {conversationMenuOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setConversationMenuOpen(false)} />
