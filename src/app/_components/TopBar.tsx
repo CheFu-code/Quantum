@@ -18,7 +18,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import {
-  CHEFU_ACCOUNT_BASE,
+  CHEFU_ACCOUNT_MANAGE_HREF,
   CHEFU_LOGIN_HREF,
   MODELS,
   apiUrl,
@@ -251,7 +251,7 @@ export function TopBar({
 
                   <div className="border-t border-border p-2">
                     <a
-                      href={CHEFU_ACCOUNT_BASE}
+                      href={CHEFU_ACCOUNT_MANAGE_HREF}
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                     >
                       <UserRound size={13} />

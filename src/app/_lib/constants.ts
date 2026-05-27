@@ -10,6 +10,7 @@ const QUANTUM_APP_URL =
 
 export const CHEFU_ACCOUNT_BASE = CHEFU_ACCOUNT_URL.replace(/\/$/, "");
 export const CHEFU_LOGIN_HREF = `${CHEFU_ACCOUNT_BASE}/login?app=quantum&returnTo=${encodeURIComponent(QUANTUM_APP_URL)}`;
+export const CHEFU_ACCOUNT_MANAGE_HREF = `${CHEFU_ACCOUNT_BASE}/account`;
 
 export function buildChefuLogoutHref(returnTo = QUANTUM_APP_URL) {
   return `${CHEFU_ACCOUNT_BASE}/logout?app=quantum&returnTo=${encodeURIComponent(returnTo)}`;
