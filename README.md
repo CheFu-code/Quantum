@@ -24,7 +24,7 @@ npm run start
 Quantum uses the shared CheFu Account sign-in screen:
 
 ```txt
-https://chefuinc.com/login?app=quantum
+https://myaccount.chefuinc.com/login?app=quantum
 ```
 
 Set `NEXT_PUBLIC_CHEFU_ACCOUNT_URL` and `NEXT_PUBLIC_QUANTUM_APP_URL` for deployed environments.

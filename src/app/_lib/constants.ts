@@ -4,7 +4,7 @@ export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefuinc.com";
 const CHEFU_ACCOUNT_URL =
-  process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://chefuinc.com";
+  process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://myaccount.chefuinc.com";
 const QUANTUM_APP_URL =
   process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefuinc.com";
 
