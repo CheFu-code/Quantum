@@ -5,9 +5,16 @@ export const runtime = "nodejs";
 type GeminiRole = "user" | "model";
 
 type ChatRequest = {
+  attachments?: Array<{
+    data?: string;
+    mimeType?: string;
+    name?: string;
+    size?: number;
+  }>;
   history?: Array<{ role?: string; content?: string }>;
   message?: string;
   model?: string;
+  webSearch?: boolean;
 };
 
 type GeminiResponse = {
@@ -15,11 +22,35 @@ type GeminiResponse = {
     content?: {
       parts?: Array<{ text?: string }>;
     };
+    finishReason?: string;
+    groundingMetadata?: {
+      groundingChunks?: Array<{
+        web?: {
+          title?: string;
+          uri?: string;
+        };
+      }>;
+    };
   }>;
   error?: {
     message?: string;
   };
+  promptFeedback?: {
+    blockReason?: string;
+  };
 };
+
+type GeminiPart =
+  | { text: string }
+  | {
+      inline_data: {
+        mime_type: string;
+        data: string;
+      };
+    };
+
+const MODEL_TIERS = ["flash", "pro", "ultra"] as const;
+type ModelTier = (typeof MODEL_TIERS)[number];
 
 const SYSTEM_PROMPT = [
   "You are Quantum, a polished AI assistant for focused work.",
@@ -28,7 +59,7 @@ const SYSTEM_PROMPT = [
   "If the user asks for code, provide practical implementation guidance and note important caveats.",
 ].join(" ");
 
-const MODEL_BY_TIER: Record<string, () => string> = {
+const MODEL_BY_TIER: Record<ModelTier, () => string> = {
   flash: () =>
     process.env.QUANTUM_GEMINI_MODEL_FLASH ||
     process.env.GEMINI_MODEL ||
@@ -69,39 +100,37 @@ export async function POST(request: Request) {
     process.env.GEMINI_API_BASE_URL ||
     "https://generativelanguage.googleapis.com/v1beta"
   ).replace(/\/$/, "");
-  const model = resolveModel(body.model);
-  const maxOutputTokens = Number(process.env.QUANTUM_MAX_OUTPUT_TOKENS || 1200);
+  const tier = resolveTier(body.model);
+  const model = resolveModel(tier);
+  const maxOutputTokens = Number(process.env.QUANTUM_MAX_OUTPUT_TOKENS || 2048);
+  const attachments = normalizeAttachments(body.attachments);
+  const userParts: GeminiPart[] = [
+    { text: message },
+    ...attachments.map((attachment): GeminiPart => ({
+      inline_data: {
+        mime_type: attachment.mimeType,
+        data: attachment.data,
+      },
+    })),
+  ];
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     systemInstruction: {
       parts: [{ text: SYSTEM_PROMPT }],
     },
     contents: [
       ...normalizeHistory(body.history),
-      { role: "user" satisfies GeminiRole, parts: [{ text: message }] },
+      { role: "user" satisfies GeminiRole, parts: userParts },
     ],
-    generationConfig: {
-      maxOutputTokens:
-        Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
-          ? maxOutputTokens
-          : 1200,
-    },
+    generationConfig: buildGenerationConfig(maxOutputTokens),
   };
 
-  try {
-    const response = await fetch(
-      `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify(payload),
-      },
-    );
+  if (body.webSearch) {
+    payload.tools = [{ google_search: {} }];
+  }
 
-    const data = (await response.json().catch(() => ({}))) as GeminiResponse;
+  try {
+    let { response, data } = await requestGemini(baseUrl, model, apiKey, payload);
 
     if (!response.ok) {
       const detail = data.error?.message || response.statusText;
@@ -111,11 +140,31 @@ export async function POST(request: Request) {
       );
     }
 
-    const reply = extractReply(data);
+    let reply = withGroundingLinks(extractReply(data), data);
+    if (!reply && data.candidates?.[0]?.finishReason === "MAX_TOKENS") {
+      payload.generationConfig = buildGenerationConfig(4096);
+      ({ response, data } = await requestGemini(baseUrl, model, apiKey, payload));
+
+      if (!response.ok) {
+        const detail = data.error?.message || response.statusText;
+        return NextResponse.json(
+          { error: `Quantum error: ${detail}` },
+          { status: response.status },
+        );
+      }
+
+      reply = withGroundingLinks(extractReply(data), data);
+    }
+
     if (!reply) {
       return NextResponse.json(
-        { error: "Quantum returned an empty response." },
-        { status: 502 },
+        {
+          createdAt: new Date().toISOString(),
+          message: buildEmptyResponseMessage(data),
+          model,
+          tier,
+        },
+        { status: 200 },
       );
     }
 
@@ -123,9 +172,10 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
       message: reply,
       model,
+      tier,
     });
   } catch (error) {
-    console.error("Quantum Gemini request failed:", error);
+    console.error("Quantum request failed:", error);
     return NextResponse.json(
       { error: "Quantum could not reach the server. Please try again." },
       { status: 502 },
@@ -133,10 +183,45 @@ export async function POST(request: Request) {
   }
 }
 
-function resolveModel(tier?: string) {
-  const normalizedTier = tier?.toLowerCase() || "pro";
-  const configuredModel = (MODEL_BY_TIER[normalizedTier] || MODEL_BY_TIER.pro)();
+async function requestGemini(
+  baseUrl: string,
+  model: string,
+  apiKey: string,
+  payload: Record<string, unknown>,
+) {
+  const response = await fetch(
+    `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
 
+  const data = (await response.json().catch(() => ({}))) as GeminiResponse;
+
+  return { response, data };
+}
+
+function buildGenerationConfig(maxOutputTokens: number) {
+  return {
+    maxOutputTokens:
+      Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
+        ? maxOutputTokens
+        : 2048,
+  };
+}
+
+function resolveTier(value?: string): ModelTier {
+  const normalized = value?.toLowerCase();
+  return MODEL_TIERS.find((tier) => tier === normalized) || "pro";
+}
+
+function resolveModel(tier: ModelTier) {
+  const configuredModel = MODEL_BY_TIER[tier]();
   return configuredModel.replace(/^models\//, "");
 }
 
@@ -158,6 +243,25 @@ function normalizeHistory(history?: ChatRequest["history"]) {
     }));
 }
 
+function normalizeAttachments(attachments?: ChatRequest["attachments"]) {
+  if (!Array.isArray(attachments)) return [];
+
+  return attachments
+    .filter((attachment) => {
+      return (
+        typeof attachment.data === "string" &&
+        typeof attachment.mimeType === "string" &&
+        attachment.mimeType.startsWith("image/") &&
+        attachment.data.length > 0
+      );
+    })
+    .slice(0, 4)
+    .map((attachment) => ({
+      data: String(attachment.data),
+      mimeType: String(attachment.mimeType),
+    }));
+}
+
 function extractReply(data: GeminiResponse) {
   return (
     data.candidates?.[0]?.content?.parts
@@ -165,4 +269,44 @@ function extractReply(data: GeminiResponse) {
       .join("")
       .trim() || ""
   );
+}
+
+function buildEmptyResponseMessage(data: GeminiResponse) {
+  const finishReason = data.candidates?.[0]?.finishReason;
+  const blockReason = data.promptFeedback?.blockReason;
+
+  if (blockReason) {
+    return `I could not answer that because the model blocked the request (${blockReason}). Try rephrasing it with a little more context.`;
+  }
+
+  if (finishReason === "MAX_TOKENS") {
+    return "I started working on that, but the response ran out of output budget before I could produce a visible answer. Try a shorter prompt or switch to Quantum Flash.";
+  }
+
+  if (finishReason) {
+    return `I could not produce a visible answer for that request (${finishReason}). Try rephrasing it and I will take another pass.`;
+  }
+
+  return "I could not produce a visible answer for that request. Try rephrasing it and I will take another pass.";
+}
+
+function withGroundingLinks(reply: string, data: GeminiResponse) {
+  const links =
+    data.candidates?.[0]?.groundingMetadata?.groundingChunks
+      ?.map((chunk) => chunk.web)
+      .filter((web): web is { title?: string; uri: string } =>
+        Boolean(web?.uri),
+      )
+      .slice(0, 5) || [];
+
+  if (!reply || links.length === 0) return reply;
+
+  const sources = links
+    .map((link, index) => {
+      const title = link.title?.trim() || `Source ${index + 1}`;
+      return `${index + 1}. [${title}](${link.uri})`;
+    })
+    .join("\n");
+
+  return `${reply}\n\n### Sources\n${sources}`;
 }
