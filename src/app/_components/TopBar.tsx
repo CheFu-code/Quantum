@@ -132,7 +132,7 @@ export function TopBar({
 
   return (
     <>
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/80 backdrop-blur-sm z-10">
+      <header className="relative z-50 flex items-center gap-3 px-4 py-3 border-b border-border bg-background/80 backdrop-blur-sm">
         <button
           onClick={onToggleSidebar}
           className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all duration-150"
@@ -149,7 +149,11 @@ export function TopBar({
 
         <div className="relative ml-auto">
           <button
-            onClick={() => setModelMenuOpen((value) => !value)}
+            onClick={() => {
+              setModelMenuOpen((value) => !value);
+              setUserMenuOpen(false);
+              setConversationMenuOpen(false);
+            }}
             className="flex items-center gap-2 pl-3 pr-2.5 py-1.5 rounded-xl border border-border hover:border-primary/40 hover:bg-muted/30 transition-all duration-150 text-xs font-medium text-foreground/80 hover:text-foreground"
             title={selectedModel.description}
           >
@@ -212,7 +216,11 @@ export function TopBar({
           <div className="relative hidden sm:block">
             <button
               type="button"
-              onClick={() => setUserMenuOpen((value) => !value)}
+              onClick={() => {
+                setUserMenuOpen((value) => !value);
+                setModelMenuOpen(false);
+                setConversationMenuOpen(false);
+              }}
               className="flex items-center gap-2 rounded-xl border border-border px-2 py-1.5 text-xs font-medium text-foreground/80 transition-all duration-150 hover:border-primary/40 hover:bg-muted/30 hover:text-foreground"
             >
               <span className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary">
