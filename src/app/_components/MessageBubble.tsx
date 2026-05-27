@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Copy, Image, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
+import NextImage from "next/image";
+import { Copy, Download, Image as ImageIcon, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { motion } from "motion/react";
 import { formatTime } from "../_lib/conversations";
 import type { Message } from "../_lib/types";
@@ -14,9 +15,17 @@ type MessageBubbleProps = {
   copied: boolean;
   liked: boolean;
   onLike: () => void;
+  onRegenerate: () => void;
 };
 
-export function MessageBubble({ msg, onCopy, copied, liked, onLike }: MessageBubbleProps) {
+export function MessageBubble({
+  msg,
+  onCopy,
+  copied,
+  liked,
+  onLike,
+  onRegenerate,
+}: MessageBubbleProps) {
   const isUser = msg.role === "user";
 
   if (isUser) {
@@ -28,19 +37,30 @@ export function MessageBubble({ msg, onCopy, copied, liked, onLike }: MessageBub
       >
         <div className="max-w-[75%] space-y-2 px-4 py-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed text-foreground" style={{ background: "rgba(138,180,248,0.12)", border: "1px solid rgba(138,180,248,0.2)" }}>
           {msg.attachments && msg.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2">
               {msg.attachments.map((attachment) => (
-                <span
+                <figure
                   key={attachment.id}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-xs text-foreground/80"
+                  className="overflow-hidden rounded-xl border border-primary/20 bg-primary/10"
                 >
-                  <Image size={12} />
-                  {attachment.name}
-                </span>
+                  <NextImage
+                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                    alt={attachment.name}
+                    width={720}
+                    height={480}
+                    unoptimized
+                    className="max-h-72 w-full object-contain"
+                    sizes="(max-width: 768px) 75vw, 520px"
+                  />
+                  <figcaption className="flex items-center gap-1.5 border-t border-primary/15 px-2 py-1 text-xs text-foreground/70">
+                    <ImageIcon size={12} />
+                    <span className="truncate">{attachment.name}</span>
+                  </figcaption>
+                </figure>
               ))}
             </div>
           )}
-          <p>{msg.content}</p>
+          {msg.content && <p>{msg.content}</p>}
         </div>
       </motion.div>
     );
@@ -58,6 +78,41 @@ export function MessageBubble({ msg, onCopy, copied, liked, onLike }: MessageBub
       <div className="flex-1 min-w-0">
         <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-card border border-border">
           <MessageContent content={msg.content} />
+          {msg.generatedImages && msg.generatedImages.length > 0 && (
+            <div className="mt-4 grid gap-3">
+              {msg.generatedImages.map((image) => {
+                const src = `data:${image.mimeType};base64,${image.data}`;
+
+                return (
+                  <figure
+                    key={image.id}
+                    className="overflow-hidden rounded-xl border border-border/70 bg-muted/20"
+                  >
+                    <NextImage
+                      src={src}
+                      alt={image.alt}
+                      width={1024}
+                      height={1024}
+                      unoptimized
+                      className="h-auto max-h-[520px] w-full object-contain"
+                      sizes="(max-width: 768px) 90vw, 720px"
+                    />
+                    <figcaption className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                      <span className="truncate">{image.alt}</span>
+                      <a
+                        href={src}
+                        download={`${image.id}.${image.mimeType.split("/")[1] || "png"}`}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-primary transition-colors hover:bg-primary/10"
+                      >
+                        <Download size={12} />
+                        Download
+                      </a>
+                    </figcaption>
+                  </figure>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 mt-1.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <ActionButton onClick={() => onCopy(msg.id, msg.content)} active={copied} title="Copy">
@@ -69,7 +124,7 @@ export function MessageBubble({ msg, onCopy, copied, liked, onLike }: MessageBub
           <ActionButton onClick={() => {}} title="Bad response">
             <ThumbsDown size={12} />
           </ActionButton>
-          <ActionButton onClick={() => {}} title="Regenerate">
+          <ActionButton onClick={onRegenerate} title="Regenerate">
             <RotateCcw size={12} />
           </ActionButton>
           <span className="ml-auto text-[9px] text-muted-foreground/40">{formatTime(msg.timestamp)}</span>

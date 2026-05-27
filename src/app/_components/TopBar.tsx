@@ -1,45 +1,134 @@
 "use client";
 
-import { useState } from "react";
 import {
   ChevronDown,
+  Download,
+  Edit3,
   LogIn,
   LogOut,
   Menu,
   MoreHorizontal,
+  Plus,
   Sparkles,
+  Star,
+  Settings,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import {
   CHEFU_ACCOUNT_BASE,
   CHEFU_LOGIN_HREF,
-  CHEFU_LOGOUT_HREF,
   MODELS,
+  apiUrl,
+  buildChefuLogoutHref,
   type QuantumModel,
 } from "../_lib/constants";
-import type { AuthStatus, SessionUser } from "../_lib/types";
+import { sessionHeaders } from "../_lib/conversations";
+import type { AuthStatus, ChatThread, SessionUser } from "../_lib/types";
 import { QuantumLogo } from "./QuantumLogo";
 
 type TopBarProps = {
+  activeThread?: ChatThread;
+  conversationCount: number;
   sidebarOpen: boolean;
   selectedModel: QuantumModel;
   authStatus: AuthStatus;
   sessionUser: SessionUser | null;
+  onClearConversations: () => void;
+  onDeleteThread: (threadId: string) => void;
+  onExportConversations: () => void;
+  onNewConversation: () => void;
+  onOpenSettings: () => void;
+  onRenameThread: (threadId: string, title: string) => void;
+  onToggleThreadStar: (threadId: string) => void;
   onToggleSidebar: () => void;
   onSelectModel: (model: QuantumModel) => void;
 };
 
 export function TopBar({
+  activeThread,
+  conversationCount,
   sidebarOpen,
   selectedModel,
   authStatus,
   sessionUser,
+  onClearConversations,
+  onDeleteThread,
+  onExportConversations,
+  onNewConversation,
+  onOpenSettings,
+  onRenameThread,
+  onToggleThreadStar,
   onToggleSidebar,
   onSelectModel,
 }: TopBarProps) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setIsSigningOut(true);
+
+    try {
+      await fetch(apiUrl("/auth/session"), {
+        method: "DELETE",
+        credentials: "include",
+        headers: sessionHeaders(),
+      });
+    } catch {
+      // The central logout page gets a second chance to clear the shared session.
+    } finally {
+      const returnTo =
+        typeof window === "undefined"
+          ? undefined
+          : `${window.location.origin}/`;
+
+      window.location.assign(buildChefuLogoutHref(returnTo));
+    }
+  }
+
+  function openConversationMenu() {
+    setConversationMenuOpen((value) => !value);
+    setModelMenuOpen(false);
+    setUserMenuOpen(false);
+    setIsRenaming(false);
+  }
+
+  function beginRename() {
+    if (!activeThread) return;
+    setRenameDraft(activeThread.title);
+    setIsRenaming(true);
+  }
+
+  function submitRename(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextTitle = renameDraft.trim();
+
+    if (!activeThread || !nextTitle) return;
+
+    onRenameThread(activeThread.id, nextTitle);
+    setConversationMenuOpen(false);
+    setIsRenaming(false);
+  }
+
+  function deleteActiveConversation() {
+    if (!activeThread) return;
+
+    const confirmed = window.confirm(
+      `Delete "${activeThread.title}"? This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    onDeleteThread(activeThread.id);
+    setConversationMenuOpen(false);
+    setIsRenaming(false);
+  }
 
   return (
     <>
@@ -92,11 +181,10 @@ export function TopBar({
                       onSelectModel(model);
                       setModelMenuOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 transition-all duration-150 text-left ${
-                      selectedModel.id === model.id
+                    className={`w-full flex items-center gap-3 px-4 py-3 transition-all duration-150 text-left ${selectedModel.id === model.id
                         ? "bg-primary/10"
                         : "hover:bg-muted/50"
-                    }`}
+                      }`}
                   >
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${model.color}22` }}>
                       <Sparkles size={14} style={{ color: model.color }} />
@@ -130,9 +218,6 @@ export function TopBar({
               <span className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <UserRound size={13} />
               </span>
-              <span className="max-w-[140px] truncate">
-                {sessionUser.displayName || sessionUser.email}
-              </span>
               <ChevronDown size={12} className="text-muted-foreground" />
             </button>
 
@@ -155,12 +240,6 @@ export function TopBar({
                     </p>
                   </div>
 
-                  <div className="px-4 py-3">
-                    <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                      <span className="size-1.5 rounded-full bg-[#81c995]" />
-                      Conversations are saved to your account
-                    </div>
-                  </div>
 
                   <div className="border-t border-border p-2">
                     <a
@@ -170,13 +249,15 @@ export function TopBar({
                       <UserRound size={13} />
                       Manage account
                     </a>
-                    <a
-                      href={CHEFU_LOGOUT_HREF}
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      disabled={isSigningOut}
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                     >
                       <LogOut size={13} />
-                      Sign out
-                    </a>
+                      {isSigningOut ? "Signing out..." : "Sign out"}
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -192,9 +273,141 @@ export function TopBar({
           </a>
         )}
 
-        <button className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all duration-150">
-          <MoreHorizontal size={16} />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={openConversationMenu}
+            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all duration-150"
+            title="Conversation actions"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+
+          <AnimatePresence>
+            {conversationMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                transition={{ duration: 0.15 }}
+                className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                style={{ boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}
+              >
+                <div className="border-b border-border px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Conversation
+                  </p>
+                  <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                    {activeThread?.title || "No conversation selected"}
+                  </p>
+                  {activeThread?.preview && (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {activeThread.preview}
+                    </p>
+                  )}
+                </div>
+
+                {isRenaming && activeThread ? (
+                  <form onSubmit={submitRename} className="border-b border-border p-3">
+                    <label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      Rename
+                    </label>
+                    <input
+                      autoFocus
+                      value={renameDraft}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary/50"
+                    />
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsRenaming(false)}
+                        className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!renameDraft.trim()}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity disabled:opacity-40"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="border-b border-border p-2">
+                    <MenuItem
+                      disabled={!activeThread}
+                      icon={<Edit3 size={13} />}
+                      label="Rename"
+                      onClick={beginRename}
+                    />
+                    <MenuItem
+                      disabled={!activeThread}
+                      icon={<Star size={13} fill={activeThread?.starred ? "currentColor" : "none"} />}
+                      label={activeThread?.starred ? "Remove star" : "Star conversation"}
+                      onClick={() => {
+                        if (!activeThread) return;
+                        onToggleThreadStar(activeThread.id);
+                        setConversationMenuOpen(false);
+                      }}
+                    />
+                    <MenuItem
+                      danger
+                      disabled={!activeThread}
+                      icon={<Trash2 size={13} />}
+                      label="Delete conversation"
+                      onClick={deleteActiveConversation}
+                    />
+                  </div>
+                )}
+
+                <div className="p-2">
+                  <MenuItem
+                    icon={<Plus size={13} />}
+                    label="New conversation"
+                    onClick={() => {
+                      onNewConversation();
+                      setConversationMenuOpen(false);
+                    }}
+                  />
+                  <MenuItem
+                    disabled={conversationCount === 0}
+                    icon={<Download size={13} />}
+                    label="Export conversations"
+                    onClick={() => {
+                      onExportConversations();
+                      setConversationMenuOpen(false);
+                    }}
+                  />
+                  <MenuItem
+                    icon={<Settings size={13} />}
+                    label="Settings & preferences"
+                    onClick={() => {
+                      onOpenSettings();
+                      setConversationMenuOpen(false);
+                    }}
+                  />
+                  <MenuItem
+                    danger
+                    disabled={conversationCount === 0}
+                    icon={<Trash2 size={13} />}
+                    label="Clear all conversations"
+                    onClick={() => {
+                      const confirmed = window.confirm(
+                        "Clear all conversations? This cannot be undone.",
+                      );
+                      if (!confirmed) return;
+                      onClearConversations();
+                      setConversationMenuOpen(false);
+                    }}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </header>
 
       {modelMenuOpen && (
@@ -203,6 +416,39 @@ export function TopBar({
       {userMenuOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
       )}
+      {conversationMenuOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setConversationMenuOpen(false)} />
+      )}
     </>
+  );
+}
+
+function MenuItem({
+  danger,
+  disabled,
+  icon,
+  label,
+  onClick,
+}: {
+  danger?: boolean;
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        danger
+          ? "text-red-200 hover:bg-red-500/10"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

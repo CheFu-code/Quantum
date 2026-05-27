@@ -9,6 +9,13 @@ export type ImageAttachment = {
   size: number;
 };
 
+export type GeneratedImage = {
+  id: string;
+  mimeType: string;
+  data: string;
+  alt: string;
+};
+
 export interface Message {
   id: string;
   role: Role;
@@ -16,6 +23,7 @@ export interface Message {
   timestamp: Date;
   thinking?: boolean;
   attachments?: ImageAttachment[];
+  generatedImages?: GeneratedImage[];
 }
 
 export interface ChatThread {

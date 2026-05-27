@@ -48,6 +48,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [authPromptFeature, setAuthPromptFeature] = useState("");
+  const [copyNotice, setCopyNotice] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -156,10 +157,6 @@ export default function App() {
 
     return () => window.clearTimeout(timeout);
   }, [authStatus, hasHydrated, threads]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
 
   useEffect(() => {
     return () => {
@@ -306,6 +303,99 @@ export default function App() {
     recognition.start();
   }
 
+  async function requestQuantumResponse({
+    attachments: activeAttachments,
+    messageText,
+    threadId,
+    visibleMessages,
+  }: {
+    attachments: ImageAttachment[];
+    messageText: string;
+    threadId: string;
+    visibleMessages: Message[];
+  }) {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: messageText || "Describe the attached image.",
+        model: selectedModel.id,
+        attachments: activeAttachments.map(({ name, mimeType, data, size }) => ({
+          name,
+          mimeType,
+          data,
+          size,
+        })),
+        webSearch: webSearchEnabled,
+        history: visibleMessages.slice(-8).map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      throw new Error(
+        errorData.error || "Quantum could not generate a response.",
+      );
+    }
+
+    const data = (await response.json()) as {
+      images?: Array<{
+        id?: string;
+        mimeType?: string;
+        data?: string;
+        alt?: string;
+      }>;
+      message?: string;
+      createdAt?: string;
+    };
+    const reply = data.message?.trim();
+
+    if (!reply) {
+      throw new Error("Quantum returned an empty response.");
+    }
+
+    const assistantMsg: Message = {
+      id: createId("message"),
+      role: "assistant",
+      content: reply,
+      generatedImages: Array.isArray(data.images)
+        ? data.images
+            .filter((image) =>
+              Boolean(image.data && image.mimeType?.startsWith("image/")),
+            )
+            .map((image, index) => ({
+              id: image.id || createId("generated-image"),
+              mimeType: image.mimeType || "image/png",
+              data: image.data || "",
+              alt: image.alt || `Generated image ${index + 1}`,
+            }))
+        : [],
+      timestamp: data.createdAt ? new Date(data.createdAt) : new Date(),
+    };
+
+    setThreads((currentThreads) =>
+      sortThreads(
+        currentThreads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                messages: [...thread.messages, assistantMsg],
+                preview: previewText(reply),
+                timestamp: assistantMsg.timestamp,
+              }
+            : thread,
+        ),
+      ),
+    );
+  }
+
   async function sendMessage() {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isTyping) return;
@@ -316,9 +406,10 @@ export default function App() {
 
     const threadId = activeConv || createId("thread");
     const now = new Date();
-    const displayContent =
+    const displayContent = text;
+    const summaryContent =
       text ||
-      `Attached ${activeAttachments.length} image${activeAttachments.length === 1 ? "" : "s"}`;
+      `Image attachment${activeAttachments.length === 1 ? "" : "s"}`;
     const userMsg: Message = {
       id: createId("message"),
       role: "user",
@@ -336,7 +427,7 @@ export default function App() {
               ? {
                   ...thread,
                   messages: [...thread.messages, userMsg],
-                  preview: previewText(displayContent),
+                  preview: previewText(summaryContent),
                   timestamp: now,
                 }
               : thread,
@@ -345,10 +436,10 @@ export default function App() {
             {
               id: threadId,
               messages: [userMsg],
-              preview: previewText(displayContent),
+              preview: previewText(summaryContent),
               starred: false,
               timestamp: now,
-              title: threadTitle(displayContent),
+              title: threadTitle(summaryContent),
             },
             ...currentThreads,
           ];
@@ -358,68 +449,12 @@ export default function App() {
     setIsTyping(true);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: text || "Describe the attached image.",
-          model: selectedModel.id,
-          attachments: activeAttachments.map(({ name, mimeType, data, size }) => ({
-            name,
-            mimeType,
-            data,
-            size,
-          })),
-          webSearch: webSearchEnabled,
-          history: messages.slice(-8).map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-        }),
+      await requestQuantumResponse({
+        attachments: activeAttachments,
+        messageText: text,
+        threadId,
+        visibleMessages: messages,
       });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || "Quantum could not generate a response.",
-        );
-      }
-
-      const data = (await response.json()) as {
-        message?: string;
-        createdAt?: string;
-      };
-      const reply = data.message?.trim();
-
-      if (!reply) {
-        throw new Error("Quantum returned an empty response.");
-      }
-
-      const assistantMsg: Message = {
-        id: createId("message"),
-        role: "assistant",
-        content: reply,
-        timestamp: data.createdAt ? new Date(data.createdAt) : new Date(),
-      };
-
-      setThreads((currentThreads) =>
-        sortThreads(
-          currentThreads.map((thread) =>
-            thread.id === threadId
-              ? {
-                  ...thread,
-                  messages: [...thread.messages, assistantMsg],
-                  preview: previewText(reply),
-                  timestamp: assistantMsg.timestamp,
-                }
-              : thread,
-          ),
-        ),
-      );
     } catch (error) {
       const fallbackMsg: Message = {
         id: createId("message"),
@@ -453,7 +488,70 @@ export default function App() {
   function copyMessage(id: string, content: string) {
     navigator.clipboard.writeText(content);
     setCopiedId(id);
+    setCopyNotice("Copied to clipboard");
     setTimeout(() => setCopiedId(null), 2000);
+    setTimeout(() => setCopyNotice(""), 1800);
+  }
+
+  async function regenerateResponse(messageId: string) {
+    if (!activeThread || isTyping) return;
+
+    const assistantIndex = activeThread.messages.findIndex(
+      (message) => message.id === messageId,
+    );
+    if (assistantIndex <= 0) return;
+
+    const userIndex = activeThread.messages
+      .slice(0, assistantIndex)
+      .findLastIndex((message) => message.role === "user");
+
+    if (userIndex < 0) return;
+
+    const userMessage = activeThread.messages[userIndex];
+    const nextMessages = activeThread.messages.slice(0, assistantIndex);
+
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === activeThread.id
+          ? {
+              ...thread,
+              messages: nextMessages,
+              preview: previewText(userMessage.content || "Image attachment"),
+              timestamp: new Date(),
+            }
+          : thread,
+      ),
+    );
+    setIsTyping(true);
+
+    try {
+      await requestQuantumResponse({
+        attachments: userMessage.attachments || [],
+        messageText: userMessage.content,
+        threadId: activeThread.id,
+        visibleMessages: nextMessages.slice(0, -1),
+      });
+    } catch (error) {
+      const fallbackMsg: Message = {
+        id: createId("message"),
+        role: "assistant",
+        content:
+          error instanceof Error
+            ? `I could not regenerate that response: ${error.message}`
+            : "I could not regenerate that response. Please try again.",
+        timestamp: new Date(),
+      };
+
+      setThreads((current) =>
+        current.map((thread) =>
+          thread.id === activeThread.id
+            ? { ...thread, messages: [...nextMessages, fallbackMsg] }
+            : thread,
+        ),
+      );
+    } finally {
+      setIsTyping(false);
+    }
   }
 
   function clearConversations() {
@@ -520,6 +618,39 @@ export default function App() {
     });
   }
 
+  function toggleThreadStar(threadId: string) {
+    setThreads((current) =>
+      sortThreads(
+        current.map((thread) =>
+          thread.id === threadId
+            ? { ...thread, starred: !thread.starred }
+            : thread,
+        ),
+      ),
+    );
+  }
+
+  function renameThread(threadId: string, title: string) {
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === threadId
+          ? { ...thread, title }
+          : thread,
+      ),
+    );
+  }
+
+  function deleteThread(threadId: string) {
+    const nextThreads = threads.filter((thread) => thread.id !== threadId);
+
+    setThreads(nextThreads);
+
+    if (activeConv === threadId) {
+      setActiveConv(nextThreads[0]?.id || "");
+      setLikedIds(new Set());
+    }
+  }
+
   const filteredConvs = threads.filter((thread) =>
     thread.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -535,15 +666,25 @@ export default function App() {
         onSearchChange={setSearchQuery}
         onNewConversation={startNewConversation}
         onSelectThread={setActiveConv}
+        onToggleStar={toggleThreadStar}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 relative">
         <TopBar
+          activeThread={activeThread}
+          conversationCount={threads.length}
           sidebarOpen={sidebarOpen}
           selectedModel={selectedModel}
           authStatus={authStatus}
           sessionUser={sessionUser}
+          onClearConversations={clearConversations}
+          onDeleteThread={deleteThread}
+          onExportConversations={exportConversations}
+          onNewConversation={startNewConversation}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onRenameThread={renameThread}
+          onToggleThreadStar={toggleThreadStar}
           onToggleSidebar={() => setSidebarOpen((value) => !value)}
           onSelectModel={setSelectedModel}
         />
@@ -555,6 +696,7 @@ export default function App() {
           likedIds={likedIds}
           messagesEndRef={messagesEndRef}
           onCopy={copyMessage}
+          onRegenerate={regenerateResponse}
           onToggleLike={toggleMessageLike}
           onSuggestion={setInput}
         />
@@ -599,6 +741,11 @@ export default function App() {
         loginHref={CHEFU_LOGIN_HREF}
         onClose={() => setAuthPromptFeature("")}
       />
+      {copyNotice && (
+        <div className="fixed bottom-6 left-1/2 z-[90] -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow-2xl backdrop-blur">
+          {copyNotice}
+        </div>
+      )}
     </div>
   );
 }

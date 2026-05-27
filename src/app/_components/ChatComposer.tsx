@@ -58,7 +58,7 @@ export function ChatComposer({
             onKeyDown={onKeyDown}
             placeholder="Ask Quantum anything..."
             rows={1}
-            className="w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground outline-none leading-relaxed"
+            className="scrollbar-hide w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground outline-none leading-relaxed"
             style={{ maxHeight: 160 }}
           />
           {attachments.length > 0 && (

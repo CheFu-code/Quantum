@@ -20,7 +20,17 @@ type ChatRequest = {
 type GeminiResponse = {
   candidates?: Array<{
     content?: {
-      parts?: Array<{ text?: string }>;
+      parts?: Array<{
+        text?: string;
+        inlineData?: {
+          mimeType?: string;
+          data?: string;
+        };
+        inline_data?: {
+          mime_type?: string;
+          data?: string;
+        };
+      }>;
     };
     finishReason?: string;
     groundingMetadata?: {
@@ -38,6 +48,13 @@ type GeminiResponse = {
   promptFeedback?: {
     blockReason?: string;
   };
+};
+
+type GeneratedImage = {
+  id: string;
+  mimeType: string;
+  data: string;
+  alt: string;
 };
 
 type GeminiPart =
@@ -74,6 +91,10 @@ const MODEL_BY_TIER: Record<ModelTier, () => string> = {
     "gemini-2.5-pro",
 };
 
+const IMAGE_MODEL = () =>
+  process.env.QUANTUM_GEMINI_IMAGE_MODEL ||
+  "gemini-3.1-flash-image-preview";
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as ChatRequest;
   const message = body.message?.trim();
@@ -101,7 +122,8 @@ export async function POST(request: Request) {
     "https://generativelanguage.googleapis.com/v1beta"
   ).replace(/\/$/, "");
   const tier = resolveTier(body.model);
-  const model = resolveModel(tier);
+  const wantsGeneratedImage = shouldUseImageGeneration(message, body.attachments);
+  const model = resolveModel(tier, wantsGeneratedImage);
   const maxOutputTokens = Number(process.env.QUANTUM_MAX_OUTPUT_TOKENS || 2048);
   const attachments = normalizeAttachments(body.attachments);
   const userParts: GeminiPart[] = [
@@ -122,7 +144,7 @@ export async function POST(request: Request) {
       ...normalizeHistory(body.history),
       { role: "user" satisfies GeminiRole, parts: userParts },
     ],
-    generationConfig: buildGenerationConfig(maxOutputTokens),
+    generationConfig: buildGenerationConfig(maxOutputTokens, wantsGeneratedImage),
   };
 
   if (body.webSearch) {
@@ -140,9 +162,10 @@ export async function POST(request: Request) {
       );
     }
 
+    let images = extractGeneratedImages(data, message);
     let reply = withGroundingLinks(extractReply(data), data);
     if (!reply && data.candidates?.[0]?.finishReason === "MAX_TOKENS") {
-      payload.generationConfig = buildGenerationConfig(4096);
+      payload.generationConfig = buildGenerationConfig(4096, wantsGeneratedImage);
       ({ response, data } = await requestGemini(baseUrl, model, apiKey, payload));
 
       if (!response.ok) {
@@ -153,7 +176,14 @@ export async function POST(request: Request) {
         );
       }
 
+      images = extractGeneratedImages(data, message);
       reply = withGroundingLinks(extractReply(data), data);
+    }
+
+    if (!reply && images.length > 0) {
+      reply = images.length === 1
+        ? "Here is the image I generated."
+        : `Here are the ${images.length} images I generated.`;
     }
 
     if (!reply) {
@@ -161,6 +191,7 @@ export async function POST(request: Request) {
         {
           createdAt: new Date().toISOString(),
           message: buildEmptyResponseMessage(data),
+          images,
           model,
           tier,
         },
@@ -170,6 +201,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       createdAt: new Date().toISOString(),
+      images,
       message: reply,
       model,
       tier,
@@ -206,12 +238,17 @@ async function requestGemini(
   return { response, data };
 }
 
-function buildGenerationConfig(maxOutputTokens: number) {
+function buildGenerationConfig(maxOutputTokens: number, includeImageOutput = false) {
   return {
     maxOutputTokens:
       Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
         ? maxOutputTokens
         : 2048,
+    ...(includeImageOutput
+      ? {
+          responseModalities: ["TEXT", "IMAGE"],
+        }
+      : {}),
   };
 }
 
@@ -220,8 +257,8 @@ function resolveTier(value?: string): ModelTier {
   return MODEL_TIERS.find((tier) => tier === normalized) || "pro";
 }
 
-function resolveModel(tier: ModelTier) {
-  const configuredModel = MODEL_BY_TIER[tier]();
+function resolveModel(tier: ModelTier, includeImageOutput = false) {
+  const configuredModel = includeImageOutput ? IMAGE_MODEL() : MODEL_BY_TIER[tier]();
   return configuredModel.replace(/^models\//, "");
 }
 
@@ -269,6 +306,65 @@ function extractReply(data: GeminiResponse) {
       .join("")
       .trim() || ""
   );
+}
+
+function extractGeneratedImages(data: GeminiResponse, prompt: string): GeneratedImage[] {
+  const parts = data.candidates?.[0]?.content?.parts || [];
+
+  return parts
+    .map((part, index) => {
+      const inlineData = part.inlineData || (
+        part.inline_data
+          ? {
+              mimeType: part.inline_data.mime_type,
+              data: part.inline_data.data,
+            }
+          : undefined
+      );
+
+      if (
+        !inlineData?.data ||
+        !inlineData.mimeType?.startsWith("image/")
+      ) {
+        return null;
+      }
+
+      return {
+        id: `generated-image-${index}`,
+        mimeType: inlineData.mimeType,
+        data: inlineData.data,
+        alt: buildImageAlt(prompt, index),
+      };
+    })
+    .filter((image): image is GeneratedImage => Boolean(image));
+}
+
+function shouldUseImageGeneration(
+  message: string,
+  attachments?: ChatRequest["attachments"],
+) {
+  const normalized = message.toLowerCase();
+  const hasImageInput = Array.isArray(attachments) && attachments.length > 0;
+  const imageOutputWords =
+    /\b(generate|create|draw|make|design|render|illustrate|visualize|paint|edit|turn|transform)\b/.test(
+      normalized,
+    ) &&
+    /\b(image|picture|photo|logo|icon|illustration|poster|wallpaper|render|art|sketch|drawing|infographic)\b/.test(
+      normalized,
+    );
+
+  return imageOutputWords || (hasImageInput && /\b(edit|change|turn|transform|add|remove|replace)\b/.test(normalized));
+}
+
+function buildImageAlt(prompt: string, index: number) {
+  const normalized = prompt.replace(/\s+/g, " ").trim();
+  const summary = normalized.length > 90
+    ? `${normalized.slice(0, 87)}...`
+    : normalized;
+
+  return summary
+    ? `Generated image ${index + 1}: ${summary}`
+    : `Generated image ${index + 1}`;
 }
 
 function buildEmptyResponseMessage(data: GeminiResponse) {

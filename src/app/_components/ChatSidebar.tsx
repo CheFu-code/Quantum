@@ -15,6 +15,7 @@ type ChatSidebarProps = {
   onSearchChange: (query: string) => void;
   onNewConversation: () => void;
   onSelectThread: (threadId: string) => void;
+  onToggleStar: (threadId: string) => void;
   onOpenSettings: () => void;
 };
 
@@ -27,6 +28,7 @@ export function ChatSidebar({
   onSearchChange,
   onNewConversation,
   onSelectThread,
+  onToggleStar,
   onOpenSettings,
 }: ChatSidebarProps) {
   const starredThreads = threads.filter((thread) => thread.starred);
@@ -45,9 +47,6 @@ export function ChatSidebar({
           <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
             <QuantumLogo />
             <span className="text-base font-semibold text-foreground tracking-tight">Quantum</span>
-            <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: "rgba(138,180,248,0.15)", color: "#8ab4f8" }}>
-              Ultra 2.0
-            </span>
           </div>
 
           <div className="px-3 pt-3 pb-2">
@@ -86,6 +85,7 @@ export function ChatSidebar({
                     conv={thread}
                     active={activeThreadId === thread.id}
                     onClick={() => onSelectThread(thread.id)}
+                    onToggleStar={() => onToggleStar(thread.id)}
                   />
                 ))}
               </div>
@@ -102,6 +102,7 @@ export function ChatSidebar({
                     conv={thread}
                     active={activeThreadId === thread.id}
                     onClick={() => onSelectThread(thread.id)}
+                    onToggleStar={() => onToggleStar(thread.id)}
                   />
                 ))
               ) : (
