@@ -40,8 +40,10 @@ export function MessageBubble({
         className="flex justify-end"
       >
         <div
-          className={`space-y-2 rounded-2xl rounded-tr-sm text-sm leading-relaxed text-foreground ${
-            compact ? "max-w-[68%] px-3 py-2" : "max-w-[75%] px-4 py-3"
+          className={`min-w-0 space-y-2 rounded-2xl rounded-tr-sm text-sm leading-relaxed text-foreground ${
+            compact
+              ? "max-w-[82%] px-3 py-2 sm:max-w-[68%]"
+              : "max-w-[88%] px-3 py-2.5 sm:max-w-[75%] sm:px-4 sm:py-3"
           }`}
           style={{ background: "rgba(138,180,248,0.12)", border: "1px solid rgba(138,180,248,0.2)" }}
         >
@@ -58,7 +60,7 @@ export function MessageBubble({
                     width={720}
                     height={480}
                     unoptimized
-                    className="max-h-72 w-full object-contain"
+                    className="max-h-60 w-full object-contain sm:max-h-72"
                     sizes="(max-width: 768px) 75vw, 520px"
                   />
                   <figcaption className="flex items-center gap-1.5 border-t border-primary/15 px-2 py-1 text-xs text-foreground/70">
@@ -84,9 +86,9 @@ export function MessageBubble({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 group"
+      className="group flex gap-2 sm:gap-3"
     >
-      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "linear-gradient(135deg, rgba(138,180,248,0.15), rgba(197,138,249,0.15))", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="mt-0.5 flex size-6 flex-shrink-0 items-center justify-center rounded-full sm:size-7" style={{ background: "linear-gradient(135deg, rgba(138,180,248,0.15), rgba(197,138,249,0.15))", border: "1px solid rgba(255,255,255,0.06)" }}>
         <QuantumLogo />
       </div>
       <div className="flex-1 min-w-0">
@@ -112,7 +114,7 @@ export function MessageBubble({
                       width={1024}
                       height={1024}
                       unoptimized
-                      className="h-auto max-h-[520px] w-full object-contain"
+                      className="h-auto max-h-[360px] w-full object-contain sm:max-h-[520px]"
                       sizes="(max-width: 768px) 90vw, 720px"
                     />
                     <figcaption className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
@@ -132,7 +134,7 @@ export function MessageBubble({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 mt-1.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <div className="mt-1.5 flex items-center gap-1 px-1 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
           <ActionButton onClick={() => onCopy(msg.id, msg.content)} active={copied} title="Copy">
             <Copy size={12} />
           </ActionButton>

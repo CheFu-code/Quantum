@@ -77,11 +77,11 @@ export function ChatMessages({
   }
 
   return (
-    <div ref={scrollRef} className="relative flex-1 overflow-y-auto scrollbar-hide">
+    <div ref={scrollRef} className="scrollbar-hide relative flex-1 overflow-y-auto">
       {messages.length === 0 ? (
         <EmptyState onSuggestion={onSuggestion} />
       ) : (
-        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-4 sm:space-y-6 sm:px-4 sm:py-6">
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
@@ -99,9 +99,9 @@ export function ChatMessages({
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex gap-3"
+              className="flex gap-2 sm:gap-3"
             >
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "linear-gradient(135deg, #8ab4f822, #c58af922)" }}>
+              <div className="mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-full" style={{ background: "linear-gradient(135deg, #8ab4f822, #c58af922)" }}>
                 <QuantumLogo />
               </div>
               <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-card border border-border">
@@ -117,7 +117,7 @@ export function ChatMessages({
         <button
           type="button"
           onClick={scrollToLatest}
-          className="sticky bottom-4 left-1/2 z-20 mx-auto flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-2 text-xs font-medium text-foreground shadow-2xl backdrop-blur transition-colors hover:border-primary/40 hover:bg-muted"
+          className="sticky bottom-3 left-1/2 z-20 mx-auto flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-2 text-xs font-medium text-foreground shadow-2xl backdrop-blur transition-colors hover:border-primary/40 hover:bg-muted sm:bottom-4"
         >
           <ArrowDown size={14} />
           Latest

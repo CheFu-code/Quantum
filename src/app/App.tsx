@@ -46,6 +46,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [selectedModel, setSelectedModel] = useState<QuantumModel>(MODELS[1]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [activeConv, setActiveConv] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,6 +72,21 @@ export default function App() {
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
   const activeThread = threads.find((thread) => thread.id === activeConv);
   const messages = activeThread?.messages || [];
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+
+    function syncLayout() {
+      const nextIsMobile = mediaQuery.matches;
+      setIsMobileLayout(nextIsMobile);
+      setSidebarOpen(!nextIsMobile);
+    }
+
+    syncLayout();
+    mediaQuery.addEventListener("change", syncLayout);
+
+    return () => mediaQuery.removeEventListener("change", syncLayout);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -635,6 +651,7 @@ export default function App() {
     setInput("");
     setAttachments([]);
     setLikedIds(new Set());
+    if (isMobileLayout) setSidebarOpen(false);
   }
 
   function handleInputChange(value: string) {
@@ -697,22 +714,34 @@ export default function App() {
     thread.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  function selectThread(threadId: string) {
+    setActiveConv(threadId);
+    if (isMobileLayout) setSidebarOpen(false);
+  }
+
+  function openSettings() {
+    setSettingsOpen(true);
+    if (isMobileLayout) setSidebarOpen(false);
+  }
+
   return (
-    <div className="h-screen w-screen flex bg-background overflow-hidden">
+    <div className="flex h-dvh w-screen overflow-hidden bg-background">
       <ChatSidebar
         open={sidebarOpen}
         threads={filteredConvs}
         activeThreadId={activeConv}
         authStatus={authStatus}
         searchQuery={searchQuery}
+        isMobile={isMobileLayout}
         onSearchChange={setSearchQuery}
         onNewConversation={startNewConversation}
-        onSelectThread={setActiveConv}
+        onSelectThread={selectThread}
         onToggleStar={toggleThreadStar}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={openSettings}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 relative">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <TopBar
           activeThread={activeThread}
           conversationCount={threads.length}
@@ -724,7 +753,7 @@ export default function App() {
           onDeleteThread={deleteThread}
           onExportConversations={exportConversations}
           onNewConversation={startNewConversation}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={openSettings}
           onRenameThread={renameThread}
           onToggleThreadStar={toggleThreadStar}
           onToggleSidebar={() => setSidebarOpen((value) => !value)}

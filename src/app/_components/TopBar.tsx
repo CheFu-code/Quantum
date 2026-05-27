@@ -6,6 +6,7 @@ import {
   Download,
   Edit3,
   LogIn,
+  LogOut,
   Menu,
   MoreHorizontal,
   Plus,
@@ -13,6 +14,7 @@ import {
   Star,
   Settings,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, type ReactNode, useState } from "react";
@@ -129,33 +131,36 @@ export function TopBar({
 
   return (
     <>
-      <header className="relative z-50 flex items-center gap-3 px-4 py-3 border-b border-border bg-background/80 backdrop-blur-sm">
+      <header className="relative z-50 flex min-w-0 items-center gap-1.5 border-b border-border bg-background/80 px-2 py-2.5 backdrop-blur-sm sm:gap-3 sm:px-4 sm:py-3">
         <button
           onClick={onToggleSidebar}
-          className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all duration-150"
+          className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground"
+          aria-label={sidebarOpen ? "Hide sidebar" : "Open sidebar"}
         >
           <Menu size={16} />
         </button>
 
         {!sidebarOpen && (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <QuantumLogo />
-            <span className="text-sm font-semibold text-foreground">Quantum</span>
+            <span className="hidden text-sm font-semibold text-foreground min-[420px]:inline">
+              Quantum
+            </span>
           </div>
         )}
 
-        <div className="relative ml-auto">
+        <div className="relative ml-auto min-w-0">
           <button
             onClick={() => {
               setModelMenuOpen((value) => !value);
               setConversationMenuOpen(false);
             }}
-            className="flex items-center gap-2 pl-3 pr-2.5 py-1.5 rounded-xl border border-border hover:border-primary/40 hover:bg-muted/30 transition-all duration-150 text-xs font-medium text-foreground/80 hover:text-foreground"
+            className="flex max-w-[42vw] items-center gap-1.5 rounded-xl border border-border py-1.5 pl-2.5 pr-2 text-xs font-medium text-foreground/80 transition-all duration-150 hover:border-primary/40 hover:bg-muted/30 hover:text-foreground sm:max-w-none sm:gap-2 sm:pl-3 sm:pr-2.5"
             title={selectedModel.description}
           >
             <div className="w-1.5 h-1.5 rounded-full" style={{ background: selectedModel.color }} />
-            {selectedModel.name}
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: `${selectedModel.color}22`, color: selectedModel.color }}>
+            <span className="truncate">{selectedModel.name}</span>
+            <span className="hidden rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:inline" style={{ background: `${selectedModel.color}22`, color: selectedModel.color }}>
               {selectedModel.badge}
             </span>
             <ChevronDown size={12} className="text-muted-foreground" />
@@ -168,7 +173,7 @@ export function TopBar({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-border bg-card shadow-2xl overflow-hidden z-50"
+                className="absolute right-0 top-full z-50 mt-2 w-[calc(100vw-1rem)] max-w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
                 style={{ boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}
               >
                 <div className="px-3 py-2 border-b border-border">
@@ -230,11 +235,11 @@ export function TopBar({
           </a>
         )}
 
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             type="button"
             onClick={openConversationMenu}
-            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all duration-150"
+            className="rounded-lg p-2 text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground"
             title="Conversation actions"
           >
             <MoreHorizontal size={16} />
@@ -247,9 +252,57 @@ export function TopBar({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.96 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                className="absolute right-0 top-full z-50 mt-2 w-[calc(100vw-1rem)] max-w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
                 style={{ boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}
               >
+                <div className="border-b border-border p-3 sm:hidden">
+                  {authStatus === "authenticated" && sessionUser ? (
+                    <>
+                      <div className="mb-2 flex items-center gap-3 rounded-2xl bg-muted/35 px-3 py-2.5">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-300 text-xs font-bold text-slate-950">
+                          {(sessionUser.displayName || sessionUser.email || "Q")
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {sessionUser.displayName || "CheFu user"}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {sessionUser.email}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                        href={CHEFU_ACCOUNT_MANAGE_HREF}
+                        onClick={() => setConversationMenuOpen(false)}
+                      >
+                        <UserRound size={13} />
+                        Manage account
+                      </a>
+                      <button
+                        type="button"
+                        disabled={isSigningOut}
+                        onClick={() => void handleSignOut()}
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/10 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <LogOut size={13} />
+                        {isSigningOut ? "Signing out..." : "Sign out"}
+                      </button>
+                    </>
+                  ) : (
+                    <a
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/50"
+                      href={CHEFU_LOGIN_HREF}
+                      onClick={() => setConversationMenuOpen(false)}
+                    >
+                      <LogIn size={13} />
+                      {authStatus === "checking" ? "Loading account" : "Sign in"}
+                    </a>
+                  )}
+                </div>
+
                 <div className="border-b border-border px-4 py-3">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                     Conversation

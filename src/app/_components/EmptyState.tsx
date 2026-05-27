@@ -21,7 +21,7 @@ const CAPABILITY_CHIPS = [
 
 export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-16">
+    <div className="flex h-full flex-col items-center justify-center px-3 py-10 sm:px-4 sm:py-16">
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -37,9 +37,9 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => v
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className="text-center mb-8"
+        className="mb-6 text-center sm:mb-8"
       >
-        <h1 className="text-3xl font-semibold text-foreground mb-2 tracking-tight">
+        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           {getGreeting()}
         </h1>
         <p className="text-muted-foreground text-sm">How can I help you today?</p>
@@ -49,7 +49,7 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => v
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="grid grid-cols-2 gap-3 w-full max-w-lg"
+        className="grid w-full max-w-lg grid-cols-1 gap-2.5 min-[460px]:grid-cols-2 sm:gap-3"
       >
         {SUGGESTIONS.map((suggestion) => (
           <motion.button
@@ -57,7 +57,7 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => v
             onClick={() => onSuggestion(suggestion.label)}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-card border border-border hover:border-border/80 transition-all duration-200 text-left group"
+            className="group flex items-center gap-3 rounded-2xl border border-border bg-card px-3.5 py-3 text-left transition-all duration-200 hover:border-border/80 sm:px-4 sm:py-3.5"
             style={{ background: "linear-gradient(135deg, rgba(26,29,35,0.8), rgba(30,33,40,0.5))" }}
           >
             <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${suggestion.color}18` }}>
@@ -73,7 +73,7 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => v
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4 }}
-        className="flex flex-wrap gap-2 mt-8 justify-center"
+        className="mt-6 flex flex-wrap justify-center gap-2 sm:mt-8"
       >
         {CAPABILITY_CHIPS.map((chip) => (
           <div key={chip.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 bg-muted/20 text-xs text-muted-foreground">
