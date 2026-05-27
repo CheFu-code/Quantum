@@ -1,7 +1,9 @@
 "use client";
 
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 
 const markdownComponents: Components = {
   p({ children }) {
@@ -95,7 +97,8 @@ export function MessageContent({ content }: { content: string }) {
   return (
     <div className="space-y-3 text-sm leading-relaxed text-foreground/90">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkMath, remarkGfm]}
+        rehypePlugins={[rehypeKatex]}
         skipHtml
         components={markdownComponents}
       >

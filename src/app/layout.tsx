@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import "katex/dist/katex.min.css";
 import "../styles/index.css";
 
 const inter = Inter({
