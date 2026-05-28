@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import "katex/dist/katex.min.css";
+import { WebMCPProvider } from "./_components/WebMCPProvider";
+import { siteDescription, siteName, siteUrl } from "./site-metadata";
 import "../styles/index.css";
 
 const inter = Inter({
@@ -17,16 +19,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefuinc.com",
-  ),
+  metadataBase: new URL(siteUrl),
   title: {
     default: "Quantum | CheFu AI Assistant",
     template: "%s | Quantum",
   },
-  description:
-    "Quantum is a fast, professional AI chat workspace from CheFu for focused research, coding, writing, and analysis.",
-  applicationName: "Quantum",
+  description: siteDescription,
+  applicationName: siteName,
   icons: {
     icon: [
       {
@@ -49,17 +48,15 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Quantum | CheFu AI Assistant",
-    description:
-      "A fast, professional AI chat workspace for focused research, coding, writing, and analysis.",
+    description: siteDescription,
     url: "/",
-    siteName: "Quantum",
+    siteName,
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Quantum | CheFu AI Assistant",
-    description:
-      "A fast, professional AI chat workspace for focused research, coding, writing, and analysis.",
+    description: siteDescription,
   },
   robots: {
     index: true,
@@ -76,7 +73,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
-      <body>{children}</body>
+      <body>
+        <WebMCPProvider />
+        {children}
+      </body>
     </html>
   );
 }
