@@ -44,6 +44,16 @@ import type {
   SpeechRecognitionLike,
 } from "./_lib/types";
 
+type QuantumResponsePayload = {
+  createdAt?: string;
+  images?: Message["generatedImages"];
+  message?: string;
+  metadata?: Message["metadata"];
+};
+type QuantumActivity = NonNullable<
+  NonNullable<Message["metadata"]>["activities"]
+>[number];
+
 export default function App() {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [input, setInput] = useState("");
@@ -351,12 +361,117 @@ export default function App() {
     recognition.start();
   }
 
+  function appendAssistantContent({
+    messageId,
+    text,
+    threadId,
+  }: {
+    messageId: string;
+    text: string;
+    threadId: string;
+  }) {
+    setThreads((currentThreads) =>
+      currentThreads.map((thread) =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              messages: thread.messages.map((message) =>
+                message.id === messageId
+                  ? { ...message, content: `${message.content}${text}` }
+                  : message,
+              ),
+            }
+          : thread,
+      ),
+    );
+  }
+
+  function appendAssistantActivity({
+    activity,
+    messageId,
+    threadId,
+  }: {
+    activity: QuantumActivity;
+    messageId: string;
+    threadId: string;
+  }) {
+    setThreads((currentThreads) =>
+      currentThreads.map((thread) =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              messages: thread.messages.map((message) =>
+                message.id === messageId
+                  ? {
+                      ...message,
+                      metadata: {
+                        ...message.metadata,
+                        activities: mergeActivities(
+                          message.metadata?.activities || [],
+                          activity,
+                        ),
+                      },
+                    }
+                  : message,
+              ),
+            }
+          : thread,
+      ),
+    );
+  }
+
+  function finalizeAssistantMessage({
+    content,
+    createdAt,
+    generatedImages,
+    messageId,
+    metadata,
+    threadId,
+  }: {
+    content: string;
+    createdAt?: string;
+    generatedImages?: Message["generatedImages"];
+    messageId: string;
+    metadata?: Message["metadata"];
+    threadId: string;
+  }) {
+    const timestamp = createdAt ? new Date(createdAt) : new Date();
+
+    setThreads((currentThreads) =>
+      sortThreads(
+        currentThreads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                messages: thread.messages.map((message) =>
+                  message.id === messageId
+                    ? {
+                        ...message,
+                        content,
+                        generatedImages,
+                        metadata,
+                        thinking: false,
+                        timestamp,
+                      }
+                    : message,
+                ),
+                preview: previewText(content),
+                timestamp,
+              }
+            : thread,
+        ),
+      ),
+    );
+  }
+
   async function requestQuantumResponse({
+    assistantMessageId,
     attachments: activeAttachments,
     messageText,
     threadId,
     visibleMessages,
   }: {
+    assistantMessageId: string;
     attachments: ImageAttachment[];
     messageText: string;
     threadId: string;
@@ -365,6 +480,7 @@ export default function App() {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: {
+        "Accept": "text/event-stream",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -401,55 +517,37 @@ export default function App() {
       );
     }
 
-    const data = (await response.json()) as {
-      images?: Array<{
-        id?: string;
-        mimeType?: string;
-        data?: string;
-        alt?: string;
-      }>;
-      message?: string;
-      createdAt?: string;
-    };
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("text/event-stream") && response.body
+      ? await readQuantumEventStream(response, {
+          onActivity: (activity) =>
+            appendAssistantActivity({
+              activity,
+              messageId: assistantMessageId,
+              threadId,
+            }),
+          onChunk: (text) =>
+            appendAssistantContent({
+              messageId: assistantMessageId,
+              text,
+              threadId,
+            }),
+        })
+      : ((await response.json()) as QuantumResponsePayload);
     const reply = data.message?.trim();
 
     if (!reply) {
       throw new Error("Quantum returned an empty response.");
     }
 
-    const assistantMsg: Message = {
-      id: createId("message"),
-      role: "assistant",
+    finalizeAssistantMessage({
       content: reply,
-      generatedImages: Array.isArray(data.images)
-        ? data.images
-            .filter((image) =>
-              Boolean(image.data && image.mimeType?.startsWith("image/")),
-            )
-            .map((image, index) => ({
-              id: image.id || createId("generated-image"),
-              mimeType: image.mimeType || "image/png",
-              data: image.data || "",
-              alt: image.alt || `Generated image ${index + 1}`,
-            }))
-        : [],
-      timestamp: data.createdAt ? new Date(data.createdAt) : new Date(),
-    };
-
-    setThreads((currentThreads) =>
-      sortThreads(
-        currentThreads.map((thread) =>
-          thread.id === threadId
-            ? {
-                ...thread,
-                messages: [...thread.messages, assistantMsg],
-                preview: previewText(reply),
-                timestamp: assistantMsg.timestamp,
-              }
-            : thread,
-        ),
-      ),
-    );
+      createdAt: data.createdAt,
+      generatedImages: normalizeGeneratedImages(data.images),
+      messageId: assistantMessageId,
+      metadata: data.metadata,
+      threadId,
+    });
   }
 
   async function sendMessage() {
@@ -473,6 +571,14 @@ export default function App() {
       timestamp: now,
       attachments: activeAttachments,
     };
+    const assistantMessageId = createId("message");
+    const assistantMsg: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: now,
+      thinking: true,
+    };
 
     if (!activeConv) setActiveConv(threadId);
     setThreads((currentThreads) => {
@@ -482,7 +588,7 @@ export default function App() {
             thread.id === threadId
               ? {
                   ...thread,
-                  messages: [...thread.messages, userMsg],
+                  messages: [...thread.messages, userMsg, assistantMsg],
                   preview: previewText(summaryContent),
                   timestamp: now,
                 }
@@ -491,7 +597,7 @@ export default function App() {
         : [
             {
               id: threadId,
-              messages: [userMsg],
+              messages: [userMsg, assistantMsg],
               preview: previewText(summaryContent),
               starred: false,
               timestamp: now,
@@ -506,29 +612,21 @@ export default function App() {
 
     try {
       await requestQuantumResponse({
+        assistantMessageId,
         attachments: activeAttachments,
         messageText: text,
         threadId,
         visibleMessages: messages,
       });
     } catch (error) {
-      const fallbackMsg: Message = {
-        id: createId("message"),
-        role: "assistant",
+      finalizeAssistantMessage({
         content:
           error instanceof Error
             ? `I could not complete that request: ${error.message}`
             : "I could not complete that request. Please try again.",
-        timestamp: new Date(),
-      };
-
-      setThreads((currentThreads) =>
-        currentThreads.map((thread) =>
-          thread.id === threadId
-            ? { ...thread, messages: [...thread.messages, fallbackMsg] }
-            : thread,
-        ),
-      );
+        messageId: assistantMessageId,
+        threadId,
+      });
     } finally {
       setIsTyping(false);
     }
@@ -571,13 +669,21 @@ export default function App() {
 
     const userMessage = activeThread.messages[userIndex];
     const nextMessages = activeThread.messages.slice(0, assistantIndex);
+    const assistantMessageId = createId("message");
+    const assistantMsg: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      thinking: true,
+    };
 
     setThreads((current) =>
       current.map((thread) =>
         thread.id === activeThread.id
           ? {
               ...thread,
-              messages: nextMessages,
+              messages: [...nextMessages, assistantMsg],
               preview: previewText(userMessage.content || "Image attachment"),
               timestamp: new Date(),
             }
@@ -588,29 +694,21 @@ export default function App() {
 
     try {
       await requestQuantumResponse({
+        assistantMessageId,
         attachments: userMessage.attachments || [],
         messageText: userMessage.content,
         threadId: activeThread.id,
         visibleMessages: nextMessages.slice(0, -1),
       });
     } catch (error) {
-      const fallbackMsg: Message = {
-        id: createId("message"),
-        role: "assistant",
+      finalizeAssistantMessage({
         content:
           error instanceof Error
             ? `I could not regenerate that response: ${error.message}`
             : "I could not regenerate that response. Please try again.",
-        timestamp: new Date(),
-      };
-
-      setThreads((current) =>
-        current.map((thread) =>
-          thread.id === activeThread.id
-            ? { ...thread, messages: [...nextMessages, fallbackMsg] }
-            : thread,
-        ),
-      );
+        messageId: assistantMessageId,
+        threadId: activeThread.id,
+      });
     } finally {
       setIsTyping(false);
     }
@@ -905,4 +1003,159 @@ function parseStoredPreferences(value: string | null): ChatPreferences {
   } catch {
     return DEFAULT_CHAT_PREFERENCES;
   }
+}
+
+function normalizeGeneratedImages(images: QuantumResponsePayload["images"]) {
+  if (!Array.isArray(images)) return [];
+
+  return images
+    .filter((image) =>
+      Boolean(image?.data && image.mimeType?.startsWith("image/")),
+    )
+    .map((image, index) => ({
+      id: image.id || createId("generated-image"),
+      mimeType: image.mimeType || "image/png",
+      data: image.data || "",
+      alt: image.alt || `Generated image ${index + 1}`,
+    }));
+}
+
+async function readQuantumEventStream(
+  response: Response,
+  {
+    onActivity,
+    onChunk,
+  }: {
+    onActivity: (activity: QuantumActivity) => void;
+    onChunk: (text: string) => void;
+  },
+) {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Quantum returned an unreadable response stream.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let streamedActivities: QuantumActivity[] = [];
+  let streamedMessage = "";
+  let finalPayload: QuantumResponsePayload | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() || "";
+
+    events.forEach((event) => {
+      const parsed = parseQuantumStreamEvent(event);
+      if (!parsed) return;
+
+      if (parsed.event === "chunk") {
+        const text = typeof parsed.data.text === "string" ? parsed.data.text : "";
+        if (!text) return;
+        streamedMessage += text;
+        onChunk(text);
+        return;
+      }
+
+      if (parsed.event === "activity" && isQuantumActivity(parsed.data.activity)) {
+        streamedActivities = mergeActivities(
+          streamedActivities,
+          parsed.data.activity,
+        );
+        onActivity(parsed.data.activity);
+        return;
+      }
+
+      if (parsed.event === "done") {
+        finalPayload = parsed.data as QuantumResponsePayload;
+        return;
+      }
+
+      if (parsed.event === "error") {
+        throw new Error(
+          typeof parsed.data.error === "string"
+            ? parsed.data.error
+            : "Quantum could not generate a response.",
+        );
+      }
+    });
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const parsed = parseQuantumStreamEvent(buffer);
+    if (parsed?.event === "done") {
+      finalPayload = parsed.data as QuantumResponsePayload;
+    }
+  }
+
+  return {
+    ...finalPayload,
+    metadata: {
+      ...finalPayload?.metadata,
+      activities:
+        finalPayload?.metadata?.activities?.length
+          ? finalPayload.metadata.activities
+          : streamedActivities,
+    },
+    message: finalPayload?.message || streamedMessage,
+  };
+}
+
+function parseQuantumStreamEvent(event: string) {
+  const lines = event.split(/\r?\n/);
+  const eventName =
+    lines.find((line) => line.startsWith("event:"))?.slice(6).trim() ||
+    "message";
+  const data = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+    .trim();
+
+  if (!data) return null;
+
+  try {
+    return {
+      data: JSON.parse(data) as Record<string, unknown>,
+      event: eventName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isQuantumActivity(value: unknown): value is QuantumActivity {
+  if (!value || typeof value !== "object") return false;
+
+  const activity = value as Record<string, unknown>;
+  return (
+    (activity.type === "search" ||
+      activity.type === "code" ||
+      activity.type === "tool") &&
+    typeof activity.title === "string"
+  );
+}
+
+function mergeActivities(
+  activities: QuantumActivity[],
+  activity: QuantumActivity,
+) {
+  const key = activityKey(activity);
+  if (activities.some((item) => activityKey(item) === key)) return activities;
+  return [...activities, activity];
+}
+
+function activityKey(activity: QuantumActivity) {
+  return [
+    activity.type,
+    activity.title,
+    activity.detail || "",
+    activity.code || "",
+    activity.output || "",
+  ].join(":");
 }

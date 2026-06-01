@@ -43,6 +43,9 @@ export function ChatMessages({
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showJumpButton, setShowJumpButton] = useState(false);
+  const hasInlineThinkingMessage = messages.some(
+    (message) => message.role === "assistant" && message.thinking,
+  );
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -99,7 +102,7 @@ export function ChatMessages({
               onRegenerate={() => onRegenerate(message.id)}
             />
           ))}
-          {isTyping && (
+          {isTyping && !hasInlineThinkingMessage && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}

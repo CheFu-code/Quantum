@@ -124,6 +124,14 @@ type GeneratedImage = {
   alt: string;
 };
 
+type ToolActivity = {
+  type: "search" | "code" | "tool";
+  title: string;
+  detail?: string;
+  code?: string;
+  output?: string;
+};
+
 type GeminiPart =
   | { text: string }
   | {
@@ -264,6 +272,20 @@ export async function POST(request: Request) {
     payload.cachedContent = cachedContent;
   }
 
+  if (acceptsEventStream(request)) {
+    return streamQuantumResponse({
+      apiKey,
+      baseUrl,
+      message,
+      model,
+      payload,
+      publicModel,
+      serviceTier,
+      tier,
+      toolConfig,
+    });
+  }
+
   try {
     let { response, data } = await requestGemini(baseUrl, model, apiKey, payload);
 
@@ -276,7 +298,7 @@ export async function POST(request: Request) {
     }
 
     let images = extractGeneratedImages(data, message);
-    let reply = withGroundingLinks(extractReply(data), data);
+    let reply = extractReply(data);
     if (!reply && data.candidates?.[0]?.finishReason === "MAX_TOKENS") {
       payload.generationConfig = buildGenerationConfig({
         includeImageOutput: wantsGeneratedImage,
@@ -295,7 +317,7 @@ export async function POST(request: Request) {
       }
 
       images = extractGeneratedImages(data, message);
-      reply = withGroundingLinks(extractReply(data), data);
+      reply = extractReply(data);
     }
 
     if (!reply && images.length > 0) {
@@ -358,6 +380,194 @@ async function requestGemini(
   const data = (await response.json().catch(() => ({}))) as GeminiResponse;
 
   return { response, data };
+}
+
+function acceptsEventStream(request: Request) {
+  return request.headers
+    .get("accept")
+    ?.toLowerCase()
+    .includes("text/event-stream");
+}
+
+async function requestGeminiStream(
+  baseUrl: string,
+  model: string,
+  apiKey: string,
+  payload: Record<string, unknown>,
+) {
+  const response = await fetch(
+    `${baseUrl}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  return response;
+}
+
+function streamQuantumResponse({
+  apiKey,
+  baseUrl,
+  message,
+  model,
+  payload,
+  publicModel,
+  serviceTier,
+  tier,
+  toolConfig,
+}: {
+  apiKey: string;
+  baseUrl: string;
+  message: string;
+  model: string;
+  payload: Record<string, unknown>;
+  publicModel: string;
+  serviceTier: string;
+  tier: ModelTier;
+  toolConfig: ReturnType<typeof buildGeminiToolConfig>;
+}) {
+  const encoder = new TextEncoder();
+
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        const send = (event: string, data: Record<string, unknown>) => {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+          );
+        };
+
+        try {
+          const response = await requestGeminiStream(baseUrl, model, apiKey, payload);
+
+          if (!response.ok) {
+            send("error", {
+              error: `Quantum error: ${await readGeminiError(response)}`,
+            });
+            controller.close();
+            return;
+          }
+
+          const chunks: GeminiResponse[] = [];
+          const activityKeys = new Set<string>();
+          let reply = "";
+          let images: GeneratedImage[] = [];
+
+          await readGeminiEventStream(response, (data) => {
+            chunks.push(data);
+
+            collectToolActivities(data).forEach((activity) => {
+              const key = activityKey(activity);
+              if (activityKeys.has(key)) return;
+              activityKeys.add(key);
+              send("activity", { activity });
+            });
+
+            const text = extractReply(data, { trim: false });
+            if (text) {
+              reply += text;
+              send("chunk", { text });
+            }
+
+            const nextImages = extractGeneratedImages(data, message);
+            if (nextImages.length > 0) {
+              images = [...images, ...nextImages];
+            }
+          });
+
+          const finalData = chunks[chunks.length - 1] || {};
+          const finalReply =
+            reply.trim() ||
+            (images.length > 0
+              ? images.length === 1
+                ? "Here is the image I generated."
+                : `Here are the ${images.length} images I generated.`
+              : buildEmptyResponseMessage(finalData));
+
+          send("done", {
+            createdAt: new Date().toISOString(),
+            images: normalizeGeneratedImages(images),
+            message: finalReply,
+            metadata: buildResponseMetadata(chunks, toolConfig),
+            model: publicModel,
+            serviceTier,
+            tier,
+          });
+        } catch (error) {
+          console.error("Quantum stream failed:", error);
+          send("error", {
+            error: "Quantum could not reach the server. Please try again.",
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    }),
+    {
+      headers: {
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "X-Accel-Buffering": "no",
+      },
+    },
+  );
+}
+
+async function readGeminiError(response: Response) {
+  const data = (await response.json().catch(() => null)) as GeminiResponse | null;
+  return data?.error?.message || response.statusText;
+}
+
+async function readGeminiEventStream(
+  response: Response,
+  onData: (data: GeminiResponse) => void,
+) {
+  const reader = response.body?.getReader();
+  if (!reader) return;
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() || "";
+    events.forEach((event) => parseGeminiStreamEvent(event, onData));
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    parseGeminiStreamEvent(buffer, onData);
+  }
+}
+
+function parseGeminiStreamEvent(
+  event: string,
+  onData: (data: GeminiResponse) => void,
+) {
+  const data = event
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+    .trim();
+
+  if (!data || data === "[DONE]") return;
+
+  try {
+    onData(JSON.parse(data) as GeminiResponse);
+  } catch {
+    console.warn("Ignored malformed Gemini stream event.");
+  }
 }
 
 function buildGenerationConfig({
@@ -600,31 +810,17 @@ function isSupportedInlineMimeType(mimeType: string) {
   );
 }
 
-function extractReply(data: GeminiResponse) {
-  return (
+function extractReply(data: GeminiResponse, options: { trim?: boolean } = {}) {
+  const reply =
     data.candidates?.[0]?.content?.parts
       ?.map(formatResponsePart)
-      .join("")
-      .trim() || ""
-  );
+      .join("") || "";
+
+  return options.trim === false ? reply : reply.trim();
 }
 
 function formatResponsePart(part: GeminiResponsePart) {
   if (part.text) return part.text;
-
-  const executableCode = part.executableCode || part.executable_code;
-  if (executableCode?.code) {
-    const language = executableCode.language?.toLowerCase() === "python"
-      ? "python"
-      : "";
-    return `\n\n\`\`\`${language}\n${executableCode.code.trim()}\n\`\`\`\n`;
-  }
-
-  const result = part.codeExecutionResult || part.code_execution_result;
-  if (result?.output) {
-    return `\n\n\`\`\`text\n${result.output.trim()}\n\`\`\`\n`;
-  }
-
   return "";
 }
 
@@ -657,6 +853,130 @@ function extractGeneratedImages(data: GeminiResponse, prompt: string): Generated
       };
     })
     .filter((image): image is GeneratedImage => Boolean(image));
+}
+
+function normalizeGeneratedImages(images: GeneratedImage[]) {
+  const seen = new Set<string>();
+
+  return images
+    .filter((image) => {
+      const key = `${image.mimeType}:${image.data.slice(0, 64)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((image, index) => ({
+      ...image,
+      id: `generated-image-${index}`,
+    }));
+}
+
+function collectToolActivities(data: GeminiResponse): ToolActivity[] {
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const activities: ToolActivity[] = [];
+
+  parts.forEach((part) => {
+    const executableCode = part.executableCode || part.executable_code;
+    if (executableCode?.code) {
+      activities.push(activityFromCode(
+        executableCode.language || "",
+        executableCode.code,
+      ));
+      return;
+    }
+
+    const result = part.codeExecutionResult || part.code_execution_result;
+    if (result?.output) {
+      const output = result.output.trim();
+      const latestActivity = activities[activities.length - 1];
+
+      if (isSearchStatusOutput(output)) {
+        return;
+      }
+
+      if (latestActivity && !latestActivity.output) {
+        latestActivity.output = output;
+        return;
+      }
+
+      const activity = activityFromToolOutput(output);
+      if (activity) activities.push(activity);
+    }
+  });
+
+  return activities;
+}
+
+function activityFromCode(language: string, code: string): ToolActivity {
+  const normalizedCode = code.trim();
+  const searchQuery = extractSearchQuery(normalizedCode);
+
+  if (searchQuery) {
+    return {
+      type: "search",
+      title: "Searched the web",
+      detail: searchQuery,
+      code: normalizedCode,
+    };
+  }
+
+  return {
+    type: "code",
+    title: `Ran ${language.trim() || "code"}`,
+    detail: normalizedCode.split("\n")[0]?.slice(0, 120),
+    code: normalizedCode,
+  };
+}
+
+function activityFromToolOutput(output: string): ToolActivity | null {
+  if (isSearchStatusOutput(output)) return null;
+
+  return {
+    type: "tool",
+    title: "Used a tool",
+    detail: output.slice(0, 120),
+    output,
+  };
+}
+
+function isSearchStatusOutput(output: string) {
+  return /^(looking up information on google search|searching (the )?(web|google search))\.?$/i.test(
+    output.trim(),
+  );
+}
+
+function extractSearchQuery(code: string) {
+  const match = code.match(
+    /\b(?:concise_search|google_search|web_search|search)\s*\(\s*["'`]([^"'`]+)["'`]/i,
+  );
+
+  return match?.[1]?.trim() || "";
+}
+
+function collectToolActivitiesFromResponses(responses: GeminiResponse[]) {
+  const seen = new Set<string>();
+  const activities: ToolActivity[] = [];
+
+  responses.forEach((response) => {
+    collectToolActivities(response).forEach((activity) => {
+      const key = activityKey(activity);
+      if (seen.has(key)) return;
+      seen.add(key);
+      activities.push(activity);
+    });
+  });
+
+  return activities;
+}
+
+function activityKey(activity: ToolActivity) {
+  return [
+    activity.type,
+    activity.title,
+    activity.detail || "",
+    activity.code || "",
+    activity.output || "",
+  ].join(":");
 }
 
 function shouldUseImageGeneration(
@@ -704,21 +1024,6 @@ function buildEmptyResponseMessage(data: GeminiResponse) {
   }
 
   return "I could not produce a visible answer for that request. Try rephrasing it and I will take another pass.";
-}
-
-function withGroundingLinks(reply: string, data: GeminiResponse) {
-  const links = collectSources(data).slice(0, 6);
-
-  if (!reply || links.length === 0) return reply;
-
-  const sources = links
-    .map((link, index) => {
-      const title = link.title.trim() || `Source ${index + 1}`;
-      return `${index + 1}. [${title}](${link.uri})`;
-    })
-    .join("\n");
-
-  return `${reply}\n\n### Sources\n${sources}`;
 }
 
 function collectSources(data: GeminiResponse) {
@@ -779,6 +1084,21 @@ function collectSources(data: GeminiResponse) {
   });
 }
 
+function collectSourcesFromResponses(responses: GeminiResponse[]) {
+  const seen = new Set<string>();
+  const sources: ReturnType<typeof collectSources> = [];
+
+  responses.forEach((response) => {
+    collectSources(response).forEach((source) => {
+      if (seen.has(source.uri)) return;
+      seen.add(source.uri);
+      sources.push(source);
+    });
+  });
+
+  return sources;
+}
+
 function readableUrlTitle(uri: string) {
   try {
     const url = new URL(uri);
@@ -789,14 +1109,19 @@ function readableUrlTitle(uri: string) {
 }
 
 function buildResponseMetadata(
-  data: GeminiResponse,
+  data: GeminiResponse | GeminiResponse[],
   toolConfig: ReturnType<typeof buildGeminiToolConfig>,
 ) {
-  const usage = data.usageMetadata || data.usage_metadata;
+  const responses = Array.isArray(data) ? data : [data];
+  const usageSource = [...responses]
+    .reverse()
+    .find((response) => response.usageMetadata || response.usage_metadata);
+  const usage = usageSource?.usageMetadata || usageSource?.usage_metadata;
   const usageRecord = usage as Record<string, number | undefined> | undefined;
 
   return {
-    sources: collectSources(data),
+    activities: collectToolActivitiesFromResponses(responses),
+    sources: collectSourcesFromResponses(responses),
     tools: {
       enabled: toolConfig.enabled,
       skipped: toolConfig.skipped,

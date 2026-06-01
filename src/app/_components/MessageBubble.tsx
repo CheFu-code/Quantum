@@ -3,19 +3,24 @@
 import type { ReactNode } from "react";
 import NextImage from "next/image";
 import {
+  Code2,
   Copy,
   Download,
+  ExternalLink,
   FileText,
+  Globe2,
   Image as ImageIcon,
   RotateCcw,
+  Search,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { formatTime } from "../_lib/conversations";
-import type { Message } from "../_lib/types";
+import type { Message, MessageSource, MessageToolActivity } from "../_lib/types";
 import { MessageContent } from "./MarkdownMessage";
 import { QuantumLogo } from "./QuantumLogo";
+import { ThinkingDots } from "./ThinkingDots";
 
 type MessageBubbleProps = {
   msg: Message;
@@ -39,6 +44,7 @@ export function MessageBubble({
   onRegenerate,
 }: MessageBubbleProps) {
   const isUser = msg.role === "user";
+  const normalizedMessage = normalizeMessagePresentation(msg);
 
   if (isUser) {
     return (
@@ -88,7 +94,18 @@ export function MessageBubble({
             compact ? "px-3 py-2" : "px-4 py-3"
           }`}
         >
-          <MessageContent content={msg.content} />
+          {normalizedMessage.activities.length > 0 && (
+            <ActivitySummary activities={normalizedMessage.activities} />
+          )}
+          {normalizedMessage.content ? (
+            <MessageContent content={normalizedMessage.content} />
+          ) : msg.thinking ? (
+            <ThinkingDots />
+          ) : null}
+          {msg.thinking && normalizedMessage.content && <StreamingCursor />}
+          {normalizedMessage.sources.length > 0 && (
+            <SourceCards sources={normalizedMessage.sources} />
+          )}
           {msg.generatedImages && msg.generatedImages.length > 0 && (
             <div className="mt-4 grid gap-3">
               {msg.generatedImages.map((image) => {
@@ -126,7 +143,11 @@ export function MessageBubble({
           )}
         </div>
         <div className="mt-1.5 flex items-center gap-1 px-1 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
-          <ActionButton onClick={() => onCopy(msg.id, msg.content)} active={copied} title="Copy">
+          <ActionButton
+            onClick={() => onCopy(msg.id, normalizedMessage.content || msg.content)}
+            active={copied}
+            title="Copy"
+          >
             <Copy size={12} />
           </ActionButton>
           <ActionButton onClick={onLike} active={liked} title="Good response">
@@ -147,6 +168,277 @@ export function MessageBubble({
       </div>
     </motion.div>
   );
+}
+
+function ActivitySummary({
+  activities,
+}: {
+  activities: MessageToolActivity[];
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {activities.slice(0, 4).map((activity, index) => {
+        const Icon = activity.type === "search" ? Search : Code2;
+        const detail = activity.detail || activity.output;
+
+        return (
+          <div
+            key={`${activity.title}-${detail || index}`}
+            className="flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-muted/35 px-2.5 py-1.5 text-xs text-muted-foreground"
+          >
+            <Icon size={13} className="shrink-0 text-primary" />
+            <span className="shrink-0 font-medium text-foreground/85">
+              {activity.title}
+            </span>
+            {detail && (
+              <span className="min-w-0 max-w-[260px] truncate">
+                {detail}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StreamingCursor() {
+  return (
+    <motion.span
+      aria-hidden="true"
+      className="ml-1 inline-block h-4 w-1 translate-y-0.5 rounded-full bg-primary/80"
+      animate={{ opacity: [0.2, 1, 0.2] }}
+      transition={{ duration: 0.9, repeat: Infinity }}
+    />
+  );
+}
+
+function SourceCards({ sources }: { sources: MessageSource[] }) {
+  return (
+    <div className="mt-4 border-t border-border/70 pt-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Globe2 size={13} />
+        Sources
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {sources.slice(0, 6).map((source, index) => {
+          const href = safeHttpUrl(source.uri);
+          const host = readableHost(source.uri);
+          const title = source.title?.trim() || host;
+
+          if (!href) return null;
+
+          return (
+            <a
+              key={`${source.uri}-${index}`}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="group flex min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-2.5 py-2 text-xs transition-colors hover:border-primary/40 hover:bg-primary/10"
+            >
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-foreground/90">
+                  {title}
+                </span>
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {host}
+                </span>
+              </span>
+              <ExternalLink
+                size={12}
+                className="shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+              />
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function normalizeMessagePresentation(message: Message) {
+  const legacyTools = splitLegacyToolActivities(message.content);
+  const legacySources = splitLegacySources(legacyTools.content);
+  const metadataActivities = normalizeActivities(
+    message.metadata?.activities || [],
+  );
+  const metadataSources = normalizeSources(message.metadata?.sources || []);
+
+  return {
+    activities:
+      metadataActivities.length > 0 ? metadataActivities : legacyTools.activities,
+    content: legacySources.content,
+    sources: metadataSources.length > 0 ? metadataSources : legacySources.sources,
+  };
+}
+
+function splitLegacyToolActivities(content: string) {
+  let remaining = content.trimStart();
+  const activities: MessageToolActivity[] = [];
+
+  while (true) {
+    const match = remaining.match(/^```([\w-]*)\n([\s\S]*?)\n```\s*/);
+    if (!match) break;
+
+    const consumed = applyLegacyToolBlock({
+      activities,
+      language: match[1],
+      value: match[2],
+    });
+
+    if (!consumed) break;
+    remaining = remaining.slice(match[0].length);
+  }
+
+  return {
+    activities,
+    content: remaining,
+  };
+}
+
+function applyLegacyToolBlock({
+  activities,
+  language,
+  value,
+}: {
+  activities: MessageToolActivity[];
+  language: string;
+  value: string;
+}) {
+  const normalizedValue = value.trim();
+  const searchQuery = extractSearchQuery(normalizedValue);
+
+  if (searchQuery) {
+    activities.push({
+      code: normalizedValue,
+      detail: searchQuery,
+      title: "Searched the web",
+      type: "search",
+    });
+    return true;
+  }
+
+  if (/google search|web search|looking up/i.test(normalizedValue)) {
+    const latestActivity = activities[activities.length - 1];
+
+    if (latestActivity && !latestActivity.output) {
+      latestActivity.output = normalizedValue;
+    } else {
+      activities.push({
+        detail: normalizedValue,
+        output: normalizedValue,
+        title: "Searched the web",
+        type: "search",
+      });
+    }
+
+    return true;
+  }
+
+  if (language.toLowerCase() === "python" && /(?:tool|search|lookup)/i.test(normalizedValue)) {
+    activities.push({
+      code: normalizedValue,
+      detail: normalizedValue.split("\n")[0]?.slice(0, 120),
+      title: "Used a tool",
+      type: "tool",
+    });
+    return true;
+  }
+
+  return false;
+}
+
+function normalizeActivities(activities: MessageToolActivity[]) {
+  const seen = new Set<string>();
+
+  return activities.filter((activity) => {
+    const key = [
+      activity.type,
+      activity.title,
+      activity.detail || "",
+      activity.code || "",
+      activity.output || "",
+    ].join(":");
+
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function splitLegacySources(content: string) {
+  const match = content.match(/\n{2,}#{2,3}\s+Sources\s*\n([\s\S]+)$/i);
+
+  if (!match) return { content, sources: [] as MessageSource[] };
+
+  return {
+    content: content.slice(0, match.index).trimEnd(),
+    sources: parseSourceLines(match[1]),
+  };
+}
+
+function parseSourceLines(value: string) {
+  return normalizeSources(
+    value
+      .split("\n")
+      .map((line) => {
+        const markdownLink = line.match(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/i);
+        if (markdownLink) {
+          return {
+            title: markdownLink[1],
+            uri: markdownLink[2],
+          };
+        }
+
+        const bareUrl = line.match(/https?:\/\/\S+/i)?.[0];
+        if (!bareUrl) return null;
+
+        return {
+          title: readableHost(bareUrl),
+          uri: bareUrl,
+        };
+      })
+      .filter((source): source is MessageSource => Boolean(source)),
+  );
+}
+
+function normalizeSources(sources: MessageSource[]) {
+  const seen = new Set<string>();
+
+  return sources.filter((source) => {
+    const href = safeHttpUrl(source.uri);
+    if (!href || seen.has(href)) return false;
+    seen.add(href);
+    return true;
+  });
+}
+
+function safeHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function readableHost(value: string) {
+  try {
+    return new URL(value).hostname.replace(/^www\./, "");
+  } catch {
+    return "Source";
+  }
+}
+
+function extractSearchQuery(code: string) {
+  const match = code.match(
+    /\b(?:concise_search|google_search|web_search|search)\s*\(\s*["'`]([^"'`]+)["'`]/i,
+  );
+
+  return match?.[1]?.trim() || "";
 }
 
 function AttachmentPreview({ attachment }: { attachment: NonNullable<Message["attachments"]>[number] }) {

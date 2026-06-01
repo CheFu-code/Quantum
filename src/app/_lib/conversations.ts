@@ -75,6 +75,7 @@ export function toStoredThreads(threads: ChatThread[]) {
       role: message.role,
       content: message.content,
       generatedImages: message.generatedImages,
+      metadata: message.metadata,
       timestamp: message.timestamp.toISOString(),
     })),
   }));

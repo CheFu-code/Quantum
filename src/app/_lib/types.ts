@@ -32,6 +32,34 @@ export type GeneratedImage = {
   alt: string;
 };
 
+export type MessageSource = {
+  title: string;
+  uri: string;
+  type?: string;
+};
+
+export type MessageToolActivity = {
+  type: "search" | "code" | "tool";
+  title: string;
+  detail?: string;
+  code?: string;
+  output?: string;
+};
+
+export type MessageMetadata = {
+  activities?: MessageToolActivity[];
+  sources?: MessageSource[];
+  tools?: {
+    enabled?: string[];
+    skipped?: string[];
+  };
+  usage?: {
+    cachedContentTokenCount?: number;
+    thoughtsTokenCount?: number;
+    totalTokenCount?: number;
+  };
+};
+
 export interface Message {
   id: string;
   role: Role;
@@ -40,6 +68,7 @@ export interface Message {
   thinking?: boolean;
   attachments?: ImageAttachment[];
   generatedImages?: GeneratedImage[];
+  metadata?: MessageMetadata;
 }
 
 export interface ChatThread {
@@ -56,6 +85,7 @@ export type StoredMessage = {
   role: Role;
   content: string;
   generatedImages?: GeneratedImage[];
+  metadata?: MessageMetadata;
   timestamp: string;
 };
 
