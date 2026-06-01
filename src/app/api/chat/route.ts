@@ -336,7 +336,7 @@ export async function POST(request: Request) {
     let { response, data } = await requestGemini(baseUrl, model, apiKey, payload);
 
     if (!response.ok) {
-      const detail = data.error?.message || response.statusText;
+      const detail = formatGeminiError(data.error?.message || response.statusText);
       return NextResponse.json(
         { error: `Quantum error: ${detail}` },
         {
@@ -358,7 +358,7 @@ export async function POST(request: Request) {
       ({ response, data } = await requestGemini(baseUrl, model, apiKey, payload));
 
       if (!response.ok) {
-        const detail = data.error?.message || response.statusText;
+        const detail = formatGeminiError(data.error?.message || response.statusText);
         return NextResponse.json(
           { error: `Quantum error: ${detail}` },
           {
@@ -644,7 +644,24 @@ function streamQuantumResponse({
 
 async function readGeminiError(response: Response) {
   const data = (await response.json().catch(() => null)) as GeminiResponse | null;
-  return data?.error?.message || response.statusText;
+  return formatGeminiError(data?.error?.message || response.statusText);
+}
+
+function formatGeminiError(message: string) {
+  const detail = message.trim() || "The AI service returned an error.";
+  const normalized = detail.toLowerCase();
+
+  if (normalized.includes("dunning")) {
+    const project = detail.match(/projects\/[\w-]+/)?.[0];
+    const projectText = project ? ` (${project})` : "";
+
+    return [
+      `Gemini API access is blocked because the Google Cloud project linked to this API key is not in good billing standing${projectText}.`,
+      "Update or re-enable Cloud Billing for that project, or replace GEMINI_API_KEY with a key from an active billing project, then restart Quantum.",
+    ].join(" ");
+  }
+
+  return detail;
 }
 
 async function readGeminiEventStream(
