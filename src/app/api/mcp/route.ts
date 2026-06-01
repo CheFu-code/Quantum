@@ -7,6 +7,7 @@ import {
   mcpServerCardUrl,
   openApiUrl,
 } from "../../_lib/agentDiscovery";
+import { checkRateLimit } from "../../_lib/rateLimit";
 
 const tools = [
   {
@@ -69,6 +70,23 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
+  const rateLimit = checkRateLimit(request, {
+    keyPrefix: "quantum-mcp",
+    limit: 120,
+    windowMs: 60_000,
+  });
+
+  if (rateLimit.limited) {
+    return Response.json(
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32000, message: "Rate limit exceeded." },
+      },
+      { headers: rateLimit.headers, status: 429 },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const id = body?.id ?? null;
   const method = body?.method;

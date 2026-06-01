@@ -7,7 +7,8 @@
     "build": "next build",
     "dev": "next dev --port 3003",
     "start": "node scripts/start-next.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke-routes.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

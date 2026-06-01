@@ -19,6 +19,14 @@ function addAgentHeaders(response: NextResponse) {
   return response;
 }
 
+function withRequestId(request: NextRequest, response: NextResponse) {
+  response.headers.set(
+    "x-request-id",
+    request.headers.get("x-request-id") || crypto.randomUUID(),
+  );
+  return response;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const normalizedPath =
@@ -28,22 +36,25 @@ export function middleware(request: NextRequest) {
     const markdown = agentMarkdownByPath[normalizedPath];
 
     if (markdown) {
-      return new NextResponse(markdown, {
-        headers: {
-          "Content-Type": "text/markdown; charset=utf-8",
-          "Link": agentLinkHeader,
-          "Vary": "Accept",
-          "x-markdown-tokens": estimateMarkdownTokens(markdown),
-        },
-      });
+      return withRequestId(
+        request,
+        new NextResponse(markdown, {
+          headers: {
+            "Content-Type": "text/markdown; charset=utf-8",
+            "Link": agentLinkHeader,
+            "Vary": "Accept",
+            "x-markdown-tokens": estimateMarkdownTokens(markdown),
+          },
+        }),
+      );
     }
   }
 
   if (normalizedPath === "/") {
-    return addAgentHeaders(NextResponse.next());
+    return withRequestId(request, addAgentHeaders(NextResponse.next()));
   }
 
-  return NextResponse.next();
+  return withRequestId(request, NextResponse.next());
 }
 
 export const config = {

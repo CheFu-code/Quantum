@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "../../_lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -167,6 +168,19 @@ const FILE_SEARCH_STORE_NAMES = () =>
     .filter(Boolean);
 
 export async function POST(request: Request) {
+  const rateLimit = checkRateLimit(request, {
+    keyPrefix: "quantum-chat",
+    limit: 30,
+    windowMs: 60_000,
+  });
+
+  if (rateLimit.limited) {
+    return NextResponse.json(
+      { error: "Too many chat requests. Please wait a moment and try again." },
+      { headers: rateLimit.headers, status: 429 },
+    );
+  }
+
   const body = (await request.json().catch(() => ({}))) as ChatRequest;
   const message = body.message?.trim();
 
