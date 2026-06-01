@@ -4,6 +4,7 @@ import type { KeyboardEvent, RefObject } from "react";
 import {
   FileText,
   Globe,
+  Headphones,
   Image,
   Link2,
   MapPin,
@@ -27,7 +28,9 @@ type ChatComposerProps = {
   supportedAttachmentAccept: string;
   urlContextEnabled: boolean;
   webSearchEnabled: boolean;
+  voiceModeEnabled: boolean;
   isListening: boolean;
+  isSpeaking: boolean;
   inputNotice: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -41,6 +44,7 @@ type ChatComposerProps = {
   onToggleMapsGrounding: () => void;
   onToggleUrlContext: () => void;
   onToggleVoice: () => void;
+  onToggleVoiceMode: () => void;
   onToggleWebSearch: () => void;
 };
 
@@ -55,7 +59,9 @@ export function ChatComposer({
   supportedAttachmentAccept,
   urlContextEnabled,
   webSearchEnabled,
+  voiceModeEnabled,
   isListening,
+  isSpeaking,
   inputNotice,
   textareaRef,
   fileInputRef,
@@ -69,6 +75,7 @@ export function ChatComposer({
   onToggleMapsGrounding,
   onToggleUrlContext,
   onToggleVoice,
+  onToggleVoiceMode,
   onToggleWebSearch,
 }: ChatComposerProps) {
   const canSend = Boolean(input.trim() || attachments.length > 0) && !isTyping;
@@ -83,8 +90,10 @@ export function ChatComposer({
     codeExecutionEnabled,
     enterToSend,
     isListening,
+    isSpeaking,
     mapsGroundingEnabled,
     urlContextEnabled,
+    voiceModeEnabled,
     webSearchEnabled,
   });
 
@@ -172,6 +181,24 @@ export function ChatComposer({
               }
             >
               <Mic size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleVoiceMode}
+              className={`rounded-lg p-2 transition-all duration-150 sm:p-1.5 ${
+                voiceModeEnabled
+                  ? "bg-[#c58af9]/15 text-[#c58af9]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+              title={
+                authStatus === "authenticated"
+                  ? voiceModeEnabled
+                    ? "Stop voice conversation"
+                    : "Start voice conversation"
+                  : "Sign in to use voice conversation"
+              }
+            >
+              <Headphones size={15} />
             </button>
             <button
               type="button"
@@ -289,18 +316,25 @@ function getStatusText({
   codeExecutionEnabled,
   enterToSend,
   isListening,
+  isSpeaking,
   mapsGroundingEnabled,
   urlContextEnabled,
+  voiceModeEnabled,
   webSearchEnabled,
 }: {
   activeToolCount: number;
   codeExecutionEnabled: boolean;
   enterToSend: boolean;
   isListening: boolean;
+  isSpeaking: boolean;
   mapsGroundingEnabled: boolean;
   urlContextEnabled: boolean;
+  voiceModeEnabled: boolean;
   webSearchEnabled: boolean;
 }) {
+  if (voiceModeEnabled && isSpeaking) return "Voice mode speaking";
+  if (voiceModeEnabled && isListening) return "Voice mode listening";
+  if (voiceModeEnabled) return "Voice mode ready";
   if (activeToolCount > 1) return `${activeToolCount} Quantum tools on`;
   if (webSearchEnabled) return "Search grounding on";
   if (urlContextEnabled) return "URL context on";

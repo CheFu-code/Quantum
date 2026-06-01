@@ -61,6 +61,10 @@ type ActiveRequest = {
   messageId: string;
   threadId: string;
 };
+type SendMessageOptions = {
+  source?: "text" | "voice";
+  text?: string;
+};
 type QuantumActivity = NonNullable<
   NonNullable<Message["metadata"]>["activities"]
 >[number];
@@ -87,16 +91,22 @@ export default function App() {
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState("auto");
+  const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [preferences, setPreferences] = useState<ChatPreferences>(
     DEFAULT_CHAT_PREFERENCES,
   );
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [inputNotice, setInputNotice] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
   const activeRequestRef = useRef<ActiveRequest | null>(null);
+  const isSpeakingRef = useRef(false);
+  const isTypingRef = useRef(false);
+  const voiceModeRef = useRef(false);
+  const voiceTurnPendingRef = useRef(false);
   const activeThread = threads.find((thread) => thread.id === activeConv);
   const messages = activeThread?.messages || [];
 
@@ -219,8 +229,21 @@ export default function App() {
   useEffect(() => {
     return () => {
       speechRef.current?.stop();
+      window.speechSynthesis?.cancel();
     };
   }, []);
+
+  useEffect(() => {
+    isTypingRef.current = isTyping;
+  }, [isTyping]);
+
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
+
+  useEffect(() => {
+    voiceModeRef.current = voiceModeEnabled;
+  }, [voiceModeEnabled]);
 
   useEffect(() => {
     const storedModel = window.localStorage.getItem("quantum-selected-model");
@@ -259,6 +282,13 @@ export default function App() {
 
   useEffect(() => {
     window.localStorage.setItem(
+      "quantum-voice-conversation-enabled",
+      String(voiceModeEnabled),
+    );
+  }, [voiceModeEnabled]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
       "quantum-chat-preferences",
       JSON.stringify(preferences),
     );
@@ -278,6 +308,10 @@ export default function App() {
   useEffect(() => {
     if (authStatus === "authenticated") return;
     setAttachments([]);
+    setVoiceModeEnabled(false);
+    voiceTurnPendingRef.current = false;
+    setIsSpeaking(false);
+    window.speechSynthesis?.cancel();
     if (isListening) {
       speechRef.current?.stop();
       setIsListening(false);
@@ -336,24 +370,64 @@ export default function App() {
   }
 
   function toggleVoiceInput() {
+    if (voiceModeEnabled) {
+      toggleVoiceMode();
+      return;
+    }
+
     if (authStatus !== "authenticated") {
       setAuthPromptFeature("voice input");
       return;
     }
 
     if (isListening) {
-      speechRef.current?.stop();
-      setIsListening(false);
+      stopListening();
       return;
     }
 
+    startVoiceRecognition({ autoSend: false });
+  }
+
+  function toggleVoiceMode() {
+    if (authStatus !== "authenticated") {
+      setAuthPromptFeature("voice conversation");
+      return;
+    }
+
+    if (voiceModeEnabled) {
+      setVoiceModeEnabled(false);
+      voiceTurnPendingRef.current = false;
+      stopListening();
+      stopSpeaking();
+      setInputNotice("Voice conversation stopped.");
+      return;
+    }
+
+    if (!canUseSpeechSynthesis()) {
+      setInputNotice("Spoken responses are not supported in this browser.");
+      return;
+    }
+
+    setVoiceModeEnabled(true);
+    setInputNotice("Voice conversation ready.");
+
+    if (!isTypingRef.current && !isSpeakingRef.current) {
+      window.setTimeout(() => startVoiceRecognition({ autoSend: true }), 0);
+    }
+  }
+
+  function startVoiceRecognition({ autoSend }: { autoSend: boolean }) {
     const recognition = getSpeechRecognition();
     if (!recognition) {
       setInputNotice("Voice input is not supported in this browser.");
+      if (autoSend) {
+        setVoiceModeEnabled(false);
+        voiceTurnPendingRef.current = false;
+      }
       return;
     }
 
-    recognition.continuous = false;
+    recognition.continuous = autoSend;
     recognition.interimResults = true;
     recognition.lang =
       voiceLanguage === "auto" ? navigator.language || "en-US" : voiceLanguage;
@@ -368,6 +442,17 @@ export default function App() {
 
       if (!transcript.trim()) return;
 
+      if (autoSend) {
+        const spokenText = transcript.trim();
+        voiceTurnPendingRef.current = true;
+        stopListening();
+        setInput(spokenText);
+        window.setTimeout(() => {
+          void sendMessage({ source: "voice", text: spokenText });
+        }, 0);
+        return;
+      }
+
       setInput((current) => {
         const separator = current.trim() ? " " : "";
         return `${current}${separator}${transcript.trim()}`;
@@ -375,17 +460,113 @@ export default function App() {
       window.setTimeout(autoResize, 0);
     };
     recognition.onerror = () => {
-      setInputNotice("Voice input stopped. Please try again.");
+      setInputNotice(
+        autoSend
+          ? "Voice conversation paused. Tap voice mode to resume."
+          : "Voice input stopped. Please try again.",
+      );
       setIsListening(false);
+      if (autoSend) {
+        setVoiceModeEnabled(false);
+        voiceTurnPendingRef.current = false;
+      }
     };
     recognition.onend = () => {
       setIsListening(false);
+      if (
+        autoSend &&
+        voiceModeRef.current &&
+        !voiceTurnPendingRef.current &&
+        !isTypingRef.current &&
+        !isSpeakingRef.current
+      ) {
+        window.setTimeout(() => {
+          if (
+            voiceModeRef.current &&
+            !voiceTurnPendingRef.current &&
+            !isTypingRef.current &&
+            !isSpeakingRef.current
+          ) {
+            startVoiceRecognition({ autoSend: true });
+          }
+        }, 400);
+      }
     };
 
+    stopListening();
     speechRef.current = recognition;
     setInputNotice("");
     setIsListening(true);
     recognition.start();
+  }
+
+  function stopListening() {
+    speechRef.current?.stop();
+    speechRef.current = null;
+    setIsListening(false);
+  }
+
+  function stopSpeaking() {
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+  }
+
+  function speakAssistantReply(content: string) {
+    if (!voiceModeRef.current) return;
+    if (!canUseSpeechSynthesis()) {
+      setInputNotice("Spoken responses are not supported in this browser.");
+      setVoiceModeEnabled(false);
+      voiceTurnPendingRef.current = false;
+      return;
+    }
+
+    const speechText = toSpeechText(content);
+    if (!speechText) {
+      voiceTurnPendingRef.current = false;
+      restartVoiceConversation();
+      return;
+    }
+
+    stopListening();
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    utterance.lang =
+      voiceLanguage === "auto" ? navigator.language || "en-US" : voiceLanguage;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => {
+      isSpeakingRef.current = true;
+      setIsSpeaking(true);
+    };
+    utterance.onend = () => {
+      isSpeakingRef.current = false;
+      voiceTurnPendingRef.current = false;
+      setIsSpeaking(false);
+      restartVoiceConversation();
+    };
+    utterance.onerror = () => {
+      isSpeakingRef.current = false;
+      voiceTurnPendingRef.current = false;
+      setIsSpeaking(false);
+      setInputNotice("Voice playback stopped.");
+      restartVoiceConversation();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function restartVoiceConversation() {
+    if (!voiceModeRef.current || isTypingRef.current) return;
+
+    window.setTimeout(() => {
+      if (!voiceModeRef.current || isTypingRef.current || isSpeakingRef.current) {
+        return;
+      }
+
+      startVoiceRecognition({ autoSend: true });
+    }, 450);
   }
 
   function appendAssistantContent({
@@ -592,14 +773,16 @@ export default function App() {
       metadata: data.metadata,
       threadId,
     });
+
+    return reply;
   }
 
-  async function sendMessage() {
-    const text = input.trim();
+  async function sendMessage(options: SendMessageOptions = {}) {
+    const text = (options.text ?? input).trim();
     if ((!text && attachments.length === 0) || isTyping) return;
     setInput("");
-    const activeAttachments = attachments;
-    setAttachments([]);
+    const activeAttachments = options.source === "voice" ? [] : attachments;
+    if (options.source !== "voice") setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     const threadId = activeConv || createId("thread");
@@ -662,7 +845,7 @@ export default function App() {
     };
 
     try {
-      await requestQuantumResponse({
+      const reply = await requestQuantumResponse({
         assistantMessageId,
         attachments: activeAttachments,
         messageText: text,
@@ -670,6 +853,11 @@ export default function App() {
         threadId,
         visibleMessages: messages,
       });
+      if (options.source === "voice" && voiceModeRef.current) {
+        speakAssistantReply(reply);
+      } else if (options.source === "voice") {
+        voiceTurnPendingRef.current = false;
+      }
     } catch (error) {
       const stopped = isAbortError(error);
       finalizeAssistantMessage({
@@ -688,6 +876,10 @@ export default function App() {
             : "Unknown error",
         threadId,
       });
+      if (options.source === "voice") {
+        voiceTurnPendingRef.current = false;
+        restartVoiceConversation();
+      }
     } finally {
       if (activeRequestRef.current?.messageId === assistantMessageId) {
         activeRequestRef.current = null;
@@ -701,6 +893,7 @@ export default function App() {
     if (!activeRequest) return;
 
     activeRequest.controller.abort();
+    voiceTurnPendingRef.current = false;
     finalizeAssistantMessage({
       content:
         getAssistantContent(activeRequest.threadId, activeRequest.messageId) ||
@@ -712,6 +905,7 @@ export default function App() {
     });
     activeRequestRef.current = null;
     setIsTyping(false);
+    restartVoiceConversation();
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1059,7 +1253,9 @@ export default function App() {
           supportedAttachmentAccept={SUPPORTED_ATTACHMENT_ACCEPT}
           urlContextEnabled={preferences.urlContext}
           webSearchEnabled={webSearchEnabled}
+          voiceModeEnabled={voiceModeEnabled}
           isListening={isListening}
+          isSpeaking={isSpeaking}
           inputNotice={inputNotice}
           textareaRef={textareaRef}
           fileInputRef={fileInputRef}
@@ -1079,6 +1275,7 @@ export default function App() {
             updatePreference("urlContext", !preferences.urlContext)
           }
           onToggleVoice={toggleVoiceInput}
+          onToggleVoiceMode={toggleVoiceMode}
           onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
         />
       </div>
@@ -1203,6 +1400,24 @@ function sanitizeHistoryContent(value: string) {
     .replace(/^```[\w-]*\n[\s\S]*?\n```\s*/g, "")
     .replace(/\n{2,}#{2,3}\s+Sources\s*\n[\s\S]+$/i, "")
     .trim();
+}
+
+function canUseSpeechSynthesis() {
+  return typeof window !== "undefined" && "speechSynthesis" in window;
+}
+
+function toSpeechText(value: string) {
+  return value
+    .replace(/```[\s\S]*?```/g, "I included a code block in the transcript.")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[*_~>#-]/g, " ")
+    .replace(/\bhttps?:\/\/\S+/gi, "")
+    .replace(/\n{2,}Sources\s*[\s\S]+$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 4000);
 }
 
 function matchesConversationFilter(
