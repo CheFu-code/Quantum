@@ -22,7 +22,7 @@ type ChatMessagesProps = {
   showTimestamps: boolean;
   onCopy: (id: string, content: string) => void;
   onRegenerate: (messageId: string) => void;
-  onToggleLike: (messageId: string) => void;
+  onFeedback: (messageId: string, rating: "up" | "down") => void;
   onSuggestion: (text: string) => void;
 };
 
@@ -38,13 +38,17 @@ export function ChatMessages({
   showTimestamps,
   onCopy,
   onRegenerate,
-  onToggleLike,
+  onFeedback,
   onSuggestion,
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showJumpButton, setShowJumpButton] = useState(false);
   const hasInlineThinkingMessage = messages.some(
-    (message) => message.role === "assistant" && message.thinking,
+    (message) =>
+      message.role === "assistant" &&
+      (message.thinking ||
+        message.status === "thinking" ||
+        message.status === "streaming"),
   );
 
   useEffect(() => {
@@ -96,9 +100,10 @@ export function ChatMessages({
               compact={compactMessages}
               onCopy={onCopy}
               copied={copiedId === message.id}
-              liked={likedIds.has(message.id)}
+              liked={likedIds.has(message.id) || message.feedback === "up"}
               showTimestamp={showTimestamps}
-              onLike={() => onToggleLike(message.id)}
+              onLike={() => onFeedback(message.id, "up")}
+              onDislike={() => onFeedback(message.id, "down")}
               onRegenerate={() => onRegenerate(message.id)}
             />
           ))}

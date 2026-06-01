@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import NextImage from "next/image";
 import {
   Code2,
   Copy,
+  ChevronDown,
   Download,
   ExternalLink,
   FileText,
@@ -30,6 +31,7 @@ type MessageBubbleProps = {
   liked: boolean;
   showTimestamp: boolean;
   onLike: () => void;
+  onDislike: () => void;
   onRegenerate: () => void;
 };
 
@@ -41,6 +43,7 @@ export function MessageBubble({
   liked,
   showTimestamp,
   onLike,
+  onDislike,
   onRegenerate,
 }: MessageBubbleProps) {
   const isUser = msg.role === "user";
@@ -95,10 +98,13 @@ export function MessageBubble({
           }`}
         >
           {normalizedMessage.activities.length > 0 && (
-            <ActivitySummary activities={normalizedMessage.activities} />
+            <ActivityLog activities={normalizedMessage.activities} />
           )}
           {normalizedMessage.content ? (
-            <MessageContent content={normalizedMessage.content} />
+            <MessageContent
+              content={normalizedMessage.content}
+              sources={normalizedMessage.sources}
+            />
           ) : msg.thinking ? (
             <ThinkingDots />
           ) : null}
@@ -153,7 +159,11 @@ export function MessageBubble({
           <ActionButton onClick={onLike} active={liked} title="Good response">
             <ThumbsUp size={12} />
           </ActionButton>
-          <ActionButton onClick={() => {}} title="Bad response">
+          <ActionButton
+            onClick={onDislike}
+            active={msg.feedback === "down"}
+            title="Bad response"
+          >
             <ThumbsDown size={12} />
           </ActionButton>
           <ActionButton onClick={onRegenerate} title="Regenerate">
@@ -161,6 +171,8 @@ export function MessageBubble({
           </ActionButton>
           {showTimestamp && (
             <span className="ml-auto text-[9px] text-muted-foreground/40">
+              {statusLabel(msg)}
+              {statusLabel(msg) ? " • " : ""}
               {formatTime(msg.timestamp)}
             </span>
           )}
@@ -170,36 +182,93 @@ export function MessageBubble({
   );
 }
 
-function ActivitySummary({
+function ActivityLog({
   activities,
 }: {
   activities: MessageToolActivity[];
 }) {
-  return (
-    <div className="mb-3 flex flex-wrap gap-2">
-      {activities.slice(0, 4).map((activity, index) => {
-        const Icon = activity.type === "search" ? Search : Code2;
-        const detail = activity.detail || activity.output;
+  const [expanded, setExpanded] = useState(false);
+  const visibleActivities = expanded ? activities : activities.slice(0, 2);
 
-        return (
-          <div
-            key={`${activity.title}-${detail || index}`}
-            className="flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-muted/35 px-2.5 py-1.5 text-xs text-muted-foreground"
-          >
-            <Icon size={13} className="shrink-0 text-primary" />
-            <span className="shrink-0 font-medium text-foreground/85">
-              {activity.title}
-            </span>
-            {detail && (
-              <span className="min-w-0 max-w-[260px] truncate">
-                {detail}
-              </span>
-            )}
-          </div>
-        );
-      })}
+  return (
+    <div className="mb-3 rounded-xl border border-border/70 bg-muted/25">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground"
+      >
+        <Search size={13} className="text-primary" />
+        <span className="font-medium text-foreground/85">Work log</span>
+        <span className="truncate">
+          {summarizeActivities(activities)}
+        </span>
+        <ChevronDown
+          size={13}
+          className={`ml-auto shrink-0 transition-transform ${
+            expanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      <div className="grid gap-1 border-t border-border/60 px-2.5 py-2">
+        {visibleActivities.map((activity, index) => (
+          <ActivityItem
+            key={`${activity.title}-${activity.detail || activity.output || index}`}
+            activity={activity}
+          />
+        ))}
+      </div>
     </div>
   );
+}
+
+function ActivityItem({ activity }: { activity: MessageToolActivity }) {
+  const Icon = activity.type === "search" ? Search : Code2;
+  const detail = activity.detail || activity.output;
+
+  return (
+    <details className="group rounded-lg px-1.5 py-1.5">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground">
+        <Icon size={13} className="shrink-0 text-primary" />
+        <span className="shrink-0 font-medium text-foreground/85">
+          {activity.title}
+        </span>
+        {detail && <span className="min-w-0 truncate">{detail}</span>}
+        {(activity.code || activity.output) && (
+          <ChevronDown
+            size={12}
+            className="ml-auto shrink-0 transition-transform group-open:rotate-180"
+          />
+        )}
+      </summary>
+      {(activity.code || activity.output) && (
+        <div className="mt-2 grid gap-2 pl-5">
+          {activity.code && (
+            <pre className="max-h-44 overflow-auto rounded-lg border border-border/60 bg-background/80 p-2 text-[11px] leading-relaxed text-foreground/80">
+              {activity.code}
+            </pre>
+          )}
+          {activity.output && (
+            <pre className="max-h-44 overflow-auto rounded-lg border border-border/60 bg-background/80 p-2 text-[11px] leading-relaxed text-foreground/80">
+              {activity.output}
+            </pre>
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
+
+function summarizeActivities(activities: MessageToolActivity[]) {
+  const searches = activities.filter((activity) => activity.type === "search").length;
+  const codeRuns = activities.filter((activity) => activity.type === "code").length;
+  const tools = activities.length - searches - codeRuns;
+  const parts = [
+    searches ? `${searches} search${searches === 1 ? "" : "es"}` : "",
+    codeRuns ? `${codeRuns} code run${codeRuns === 1 ? "" : "s"}` : "",
+    tools ? `${tools} tool step${tools === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+
+  return parts.join(", ") || `${activities.length} step${activities.length === 1 ? "" : "s"}`;
 }
 
 function StreamingCursor() {
@@ -273,6 +342,14 @@ function normalizeMessagePresentation(message: Message) {
     content: legacySources.content,
     sources: metadataSources.length > 0 ? metadataSources : legacySources.sources,
   };
+}
+
+function statusLabel(message: Message) {
+  if (message.status === "failed") return "Failed";
+  if (message.status === "stopped") return "Stopped";
+  if (message.status === "streaming") return "Writing";
+  if (message.status === "thinking" || message.thinking) return "Thinking";
+  return "";
 }
 
 function splitLegacyToolActivities(content: string) {

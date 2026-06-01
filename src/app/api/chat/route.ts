@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "../../_lib/rateLimit";
+import { checkQuantumUsageLimit } from "../../_lib/usageLimit";
 
 export const runtime = "nodejs";
 
@@ -149,6 +150,8 @@ const BASE_SYSTEM_PROMPT = [
   "Give clear, useful answers with enough structure to help the user act.",
   "Be concise by default, but expand when the user asks for depth.",
   "If the user asks for code, provide practical implementation guidance and note important caveats.",
+  "Never expose internal tool calls, search function names, raw tool syntax, or background execution logs as if they are user-facing answer text.",
+  "When tools are used, summarize the result naturally and let the application render tool activity and sources separately.",
 ].join(" ");
 
 const MODEL_BY_TIER: Record<ModelTier, () => string> = {
@@ -176,6 +179,8 @@ const FILE_SEARCH_STORE_NAMES = () =>
     .filter(Boolean);
 
 export async function POST(request: Request) {
+  const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
+  const startedAt = Date.now();
   const rateLimit = checkRateLimit(request, {
     keyPrefix: "quantum-chat",
     limit: 30,
@@ -183,9 +188,20 @@ export async function POST(request: Request) {
   });
 
   if (rateLimit.limited) {
+    logChatEvent({
+      event: "chat_rate_limited",
+      latencyMs: Date.now() - startedAt,
+      requestId,
+    });
     return NextResponse.json(
       { error: "Too many chat requests. Please wait a moment and try again." },
-      { headers: rateLimit.headers, status: 429 },
+      {
+        headers: {
+          ...rateLimit.headers,
+          "x-request-id": requestId,
+        },
+        status: 429,
+      },
     );
   }
 
@@ -195,7 +211,7 @@ export async function POST(request: Request) {
   if (!message) {
     return NextResponse.json(
       { error: "A message is required." },
-      { status: 400 },
+      { headers: { "x-request-id": requestId }, status: 400 },
     );
   }
 
@@ -206,7 +222,7 @@ export async function POST(request: Request) {
         error:
           "Quantum is not connected to its AI service yet. Add server AI credentials to Quantum/.env.local and restart the dev server.",
       },
-      { status: 503 },
+      { headers: { "x-request-id": requestId }, status: 503 },
     );
   }
 
@@ -215,6 +231,29 @@ export async function POST(request: Request) {
     "https://generativelanguage.googleapis.com/v1beta"
   ).replace(/\/$/, "");
   const tier = resolveTier(body.model);
+  const usageLimit = checkQuantumUsageLimit(request, tier);
+
+  if (usageLimit.limited) {
+    logChatEvent({
+      event: "chat_usage_limited",
+      latencyMs: Date.now() - startedAt,
+      requestId,
+      tier,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Quantum usage limit reached for this model tier. Please try again later or switch tiers.",
+      },
+      {
+        headers: {
+          ...usageLimit.headers,
+          "x-request-id": requestId,
+        },
+        status: 429,
+      },
+    );
+  }
   const imageModel = IMAGE_MODEL();
   const wantsGeneratedImage =
     Boolean(imageModel) && shouldUseImageGeneration(message, body.attachments);
@@ -276,10 +315,17 @@ export async function POST(request: Request) {
     return streamQuantumResponse({
       apiKey,
       baseUrl,
+      headers: {
+        ...rateLimit.headers,
+        ...usageLimit.headers,
+        "x-request-id": requestId,
+      },
       message,
       model,
       payload,
       publicModel,
+      requestId,
+      startedAt,
       serviceTier,
       tier,
       toolConfig,
@@ -293,7 +339,10 @@ export async function POST(request: Request) {
       const detail = data.error?.message || response.statusText;
       return NextResponse.json(
         { error: `Quantum error: ${detail}` },
-        { status: response.status },
+        {
+          headers: { "x-request-id": requestId },
+          status: response.status,
+        },
       );
     }
 
@@ -312,7 +361,10 @@ export async function POST(request: Request) {
         const detail = data.error?.message || response.statusText;
         return NextResponse.json(
           { error: `Quantum error: ${detail}` },
-          { status: response.status },
+          {
+            headers: { "x-request-id": requestId },
+            status: response.status,
+          },
         );
       }
 
@@ -332,29 +384,69 @@ export async function POST(request: Request) {
           createdAt: new Date().toISOString(),
           message: buildEmptyResponseMessage(data),
           images,
-          metadata: buildResponseMetadata(data, toolConfig),
+          metadata: buildResponseMetadata(data, toolConfig, {
+            latencyMs: Date.now() - startedAt,
+            model: publicModel,
+            requestId,
+          }),
           model: publicModel,
           serviceTier,
           tier,
         },
-        { status: 200 },
+        {
+          headers: {
+            ...rateLimit.headers,
+            ...usageLimit.headers,
+            "x-request-id": requestId,
+          },
+          status: 200,
+        },
       );
     }
+
+    const metadata = buildResponseMetadata(data, toolConfig, {
+      latencyMs: Date.now() - startedAt,
+      model: publicModel,
+      requestId,
+    });
+
+    logChatEvent({
+      event: "chat_completed",
+      latencyMs: Date.now() - startedAt,
+      model: publicModel,
+      requestId,
+      sources: metadata.sources.length,
+      tier,
+      tools: toolConfig.enabled,
+      totalTokens: metadata.usage?.totalTokenCount,
+    });
 
     return NextResponse.json({
       createdAt: new Date().toISOString(),
       images,
       message: reply,
-      metadata: buildResponseMetadata(data, toolConfig),
+      metadata,
       model: publicModel,
       serviceTier,
       tier,
+    }, {
+      headers: {
+        ...rateLimit.headers,
+        ...usageLimit.headers,
+        "x-request-id": requestId,
+      },
     });
   } catch (error) {
-    console.error("Quantum request failed:", error);
+    logChatEvent({
+      error: error instanceof Error ? error.message : "Unknown error",
+      event: "chat_failed",
+      latencyMs: Date.now() - startedAt,
+      requestId,
+      tier,
+    });
     return NextResponse.json(
       { error: "Quantum could not reach the server. Please try again." },
-      { status: 502 },
+      { headers: { "x-request-id": requestId }, status: 502 },
     );
   }
 }
@@ -413,20 +505,26 @@ async function requestGeminiStream(
 function streamQuantumResponse({
   apiKey,
   baseUrl,
+  headers,
   message,
   model,
   payload,
   publicModel,
+  requestId,
+  startedAt,
   serviceTier,
   tier,
   toolConfig,
 }: {
   apiKey: string;
   baseUrl: string;
+  headers: Record<string, string>;
   message: string;
   model: string;
   payload: Record<string, unknown>;
   publicModel: string;
+  requestId: string;
+  startedAt: number;
   serviceTier: string;
   tier: ModelTier;
   toolConfig: ReturnType<typeof buildGeminiToolConfig>;
@@ -489,17 +587,41 @@ function streamQuantumResponse({
                 : `Here are the ${images.length} images I generated.`
               : buildEmptyResponseMessage(finalData));
 
+          const latencyMs = Date.now() - startedAt;
+          const metadata = buildResponseMetadata(chunks, toolConfig, {
+            latencyMs,
+            model: publicModel,
+            requestId,
+          });
+
+          logChatEvent({
+            event: "chat_stream_completed",
+            latencyMs,
+            model: publicModel,
+            requestId,
+            sources: metadata.sources.length,
+            tier,
+            tools: toolConfig.enabled,
+            totalTokens: metadata.usage?.totalTokenCount,
+          });
+
           send("done", {
             createdAt: new Date().toISOString(),
             images: normalizeGeneratedImages(images),
             message: finalReply,
-            metadata: buildResponseMetadata(chunks, toolConfig),
+            metadata,
             model: publicModel,
             serviceTier,
             tier,
           });
         } catch (error) {
-          console.error("Quantum stream failed:", error);
+          logChatEvent({
+            error: error instanceof Error ? error.message : "Unknown error",
+            event: "chat_stream_failed",
+            latencyMs: Date.now() - startedAt,
+            requestId,
+            tier,
+          });
           send("error", {
             error: "Quantum could not reach the server. Please try again.",
           });
@@ -514,6 +636,7 @@ function streamQuantumResponse({
         "Connection": "keep-alive",
         "Content-Type": "text/event-stream; charset=utf-8",
         "X-Accel-Buffering": "no",
+        ...headers,
       },
     },
   );
@@ -772,8 +895,22 @@ function normalizeHistory(history?: ChatRequest["history"]) {
     .slice(-12)
     .map((item) => ({
       role: item.role === "assistant" ? "model" : "user",
-      parts: [{ text: item.content?.trim() || "" }],
+      text: sanitizeHistoryContent(item.content?.trim() || ""),
+    }))
+    .filter((item) => item.text.length > 0)
+    .map((item) => ({
+      role: item.role,
+      parts: [{ text: item.text }],
     }));
+}
+
+function sanitizeHistoryContent(value: string) {
+  return value
+    .replace(/^```[\w-]*\n[\s\S]*?\n```\s*/g, "")
+    .replace(/\n{2,}#{2,3}\s+Sources\s*\n[\s\S]+$/i, "")
+    .replace(/\b(?:concise_search|google_search|web_search|search)\s*\([^)]*\)/gi, "")
+    .replace(/Looking up information on Google Search\.?/gi, "")
+    .trim();
 }
 
 function normalizeAttachments(attachments?: ChatRequest["attachments"]) {
@@ -1111,6 +1248,11 @@ function readableUrlTitle(uri: string) {
 function buildResponseMetadata(
   data: GeminiResponse | GeminiResponse[],
   toolConfig: ReturnType<typeof buildGeminiToolConfig>,
+  observability: {
+    latencyMs: number;
+    model: string;
+    requestId: string;
+  },
 ) {
   const responses = Array.isArray(data) ? data : [data];
   const usageSource = [...responses]
@@ -1121,6 +1263,9 @@ function buildResponseMetadata(
 
   return {
     activities: collectToolActivitiesFromResponses(responses),
+    latencyMs: observability.latencyMs,
+    model: observability.model,
+    requestId: observability.requestId,
     sources: collectSourcesFromResponses(responses),
     tools: {
       enabled: toolConfig.enabled,
@@ -1141,4 +1286,14 @@ function buildResponseMetadata(
         }
       : undefined,
   };
+}
+
+function logChatEvent(event: Record<string, unknown>) {
+  console.log(
+    JSON.stringify({
+      app: "quantum",
+      at: new Date().toISOString(),
+      ...event,
+    }),
+  );
 }

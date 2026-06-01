@@ -4,10 +4,24 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import type { MessageSource } from "../_lib/types";
 
-const markdownComponents: Components = {
+function createMarkdownComponents(sources: MessageSource[] = []): Components {
+  let paragraphIndex = 0;
+
+  return {
   p({ children }) {
-    return <p className="break-words">{children}</p>;
+    const citationIndex = paragraphIndex;
+    paragraphIndex += 1;
+
+    return (
+      <p className="break-words">
+        {children}
+        {citationIndex < sources.length && (
+          <CitationChip index={citationIndex} source={sources[citationIndex]} />
+        )}
+      </p>
+    );
   },
   h1({ children }) {
     return <h2 className="pt-1 text-lg font-semibold leading-snug text-foreground">{children}</h2>;
@@ -91,20 +105,51 @@ const markdownComponents: Components = {
   td({ children }) {
     return <td className="border-b border-border/50 px-3 py-2 align-top">{children}</td>;
   },
-};
+  };
+}
 
-export function MessageContent({ content }: { content: string }) {
+export function MessageContent({
+  content,
+  sources = [],
+}: {
+  content: string;
+  sources?: MessageSource[];
+}) {
   return (
     <div className="space-y-3 text-sm leading-relaxed text-foreground/90">
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm]}
         rehypePlugins={[rehypeKatex]}
         skipHtml
-        components={markdownComponents}
+        components={createMarkdownComponents(sources)}
       >
         {content}
       </ReactMarkdown>
     </div>
+  );
+}
+
+function CitationChip({
+  index,
+  source,
+}: {
+  index: number;
+  source: MessageSource;
+}) {
+  const href = safeHref(source.uri);
+
+  if (!href) return null;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="ml-1 inline-flex h-4 min-w-4 translate-y-[-1px] items-center justify-center rounded-full border border-primary/35 bg-primary/10 px-1 text-[10px] font-semibold leading-none text-primary no-underline hover:bg-primary/20"
+      title={source.title || source.uri}
+    >
+      {index + 1}
+    </a>
   );
 }
 

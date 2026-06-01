@@ -10,6 +10,7 @@ import {
   Mic,
   Paperclip,
   Send,
+  Square,
   SquareTerminal,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -33,6 +34,7 @@ type ChatComposerProps = {
   onInputChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
+  onStop: () => void;
   onPickFiles: (files: FileList | null) => void | Promise<void>;
   onRemoveAttachment: (attachmentId: string) => void;
   onToggleCodeExecution: () => void;
@@ -60,6 +62,7 @@ export function ChatComposer({
   onInputChange,
   onKeyDown,
   onSend,
+  onStop,
   onPickFiles,
   onRemoveAttachment,
   onToggleCodeExecution,
@@ -239,17 +242,32 @@ export function ChatComposer({
               {statusText}
             </span>
             <motion.button
-              onClick={onSend}
-              disabled={!canSend}
+              onClick={isTyping ? onStop : onSend}
+              disabled={!isTyping && !canSend}
               whileTap={{ scale: 0.9 }}
               className="flex size-9 items-center justify-center rounded-xl transition-all duration-200 disabled:opacity-30 sm:size-8"
+              title={isTyping ? "Stop response" : "Send message"}
               style={{
-                background: canSend
+                background: isTyping
+                  ? "rgba(255,255,255,0.1)"
+                  : canSend
                   ? "linear-gradient(135deg, #8ab4f8, #c58af9)"
                   : "rgba(255,255,255,0.08)",
               }}
             >
-              <Send size={14} className={canSend ? "text-[#0d0f14]" : "text-muted-foreground"} strokeWidth={2.5} />
+              {isTyping ? (
+                <Square
+                  size={13}
+                  className="fill-muted-foreground text-muted-foreground"
+                  strokeWidth={2.5}
+                />
+              ) : (
+                <Send
+                  size={14}
+                  className={canSend ? "text-[#0d0f14]" : "text-muted-foreground"}
+                  strokeWidth={2.5}
+                />
+              )}
             </motion.button>
           </div>
         </div>

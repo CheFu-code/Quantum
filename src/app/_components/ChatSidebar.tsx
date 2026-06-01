@@ -1,8 +1,19 @@
 "use client";
 
-import { Clock, Plus, Search, Settings, Star, X } from "lucide-react";
+import {
+  AlertCircle,
+  CalendarDays,
+  Clock,
+  Globe2,
+  Image as ImageIcon,
+  Plus,
+  Search,
+  Settings,
+  Star,
+  X,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import type { AuthStatus, ChatThread } from "../_lib/types";
+import type { AuthStatus, ChatThread, ConversationFilter } from "../_lib/types";
 import { ConversationItem } from "./ConversationItem";
 import { QuantumLogo } from "./QuantumLogo";
 
@@ -11,9 +22,11 @@ type ChatSidebarProps = {
   threads: ChatThread[];
   activeThreadId: string;
   authStatus: AuthStatus;
+  conversationFilter: ConversationFilter;
   isMobile: boolean;
   searchQuery: string;
   onClose: () => void;
+  onFilterChange: (filter: ConversationFilter) => void;
   onSearchChange: (query: string) => void;
   onNewConversation: () => void;
   onSelectThread: (threadId: string) => void;
@@ -26,9 +39,11 @@ export function ChatSidebar({
   threads,
   activeThreadId,
   authStatus,
+  conversationFilter,
   isMobile,
   searchQuery,
   onClose,
+  onFilterChange,
   onSearchChange,
   onNewConversation,
   onSelectThread,
@@ -100,6 +115,30 @@ export function ChatSidebar({
                   className="flex-1 bg-transparent text-xs text-foreground/80 outline-none placeholder:text-muted-foreground"
                 />
               </div>
+            </div>
+
+            <div className="scrollbar-hide flex gap-1 overflow-x-auto px-3 pb-2">
+              {CONVERSATION_FILTERS.map((filter) => {
+                const Icon = filter.icon;
+                const active = conversationFilter === filter.id;
+
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() => onFilterChange(filter.id)}
+                    title={filter.label}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors ${
+                      active
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border/40 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <Icon size={11} />
+                    {filter.shortLabel}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="scrollbar-hide flex-1 overflow-y-auto px-2 pb-2">
@@ -176,3 +215,18 @@ export function ChatSidebar({
     </AnimatePresence>
   );
 }
+
+const CONVERSATION_FILTERS: Array<{
+  icon: typeof Search;
+  id: ConversationFilter;
+  label: string;
+  shortLabel: string;
+}> = [
+  { icon: Search, id: "all", label: "All conversations", shortLabel: "All" },
+  { icon: Star, id: "starred", label: "Starred conversations", shortLabel: "Star" },
+  { icon: ImageIcon, id: "hasImages", label: "Has generated images", shortLabel: "Images" },
+  { icon: Globe2, id: "usedWeb", label: "Used web or URL tools", shortLabel: "Web" },
+  { icon: AlertCircle, id: "failed", label: "Failed or stopped", shortLabel: "Issues" },
+  { icon: CalendarDays, id: "today", label: "Updated today", shortLabel: "Today" },
+  { icon: Clock, id: "week", label: "Updated this week", shortLabel: "Week" },
+];

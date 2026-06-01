@@ -33,13 +33,19 @@ import {
   threadTitle,
   toStoredThreads,
 } from "./_lib/conversations";
+import {
+  feedbackByMessageId,
+  saveMessageFeedback,
+} from "./_lib/feedback";
 import { fileToAttachment, getSpeechRecognition } from "./_lib/input";
 import type {
   AuthStatus,
   ChatPreferences,
   ChatThread,
+  ConversationFilter,
   ImageAttachment,
   Message,
+  MessageFeedbackRating,
   SessionUser,
   SpeechRecognitionLike,
 } from "./_lib/types";
@@ -49,6 +55,11 @@ type QuantumResponsePayload = {
   images?: Message["generatedImages"];
   message?: string;
   metadata?: Message["metadata"];
+};
+type ActiveRequest = {
+  controller: AbortController;
+  messageId: string;
+  threadId: string;
 };
 type QuantumActivity = NonNullable<
   NonNullable<Message["metadata"]>["activities"]
@@ -63,6 +74,8 @@ export default function App() {
   const [activeConv, setActiveConv] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [conversationFilter, setConversationFilter] =
+    useState<ConversationFilter>("all");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [authPromptFeature, setAuthPromptFeature] = useState("");
   const [copyNotice, setCopyNotice] = useState("");
@@ -83,6 +96,7 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
+  const activeRequestRef = useRef<ActiveRequest | null>(null);
   const activeThread = threads.find((thread) => thread.id === activeConv);
   const messages = activeThread?.messages || [];
 
@@ -163,8 +177,9 @@ export default function App() {
       try {
         const savedThreads = await loadSavedConversations();
         if (cancelled) return;
-        setThreads(savedThreads);
-        setActiveConv(savedThreads[0]?.id || "");
+        const hydratedThreads = applyStoredFeedback(savedThreads);
+        setThreads(hydratedThreads);
+        setActiveConv(hydratedThreads[0]?.id || "");
       } catch {
         if (cancelled) return;
         setThreads([]);
@@ -192,13 +207,14 @@ export default function App() {
     }
 
     const timeout = window.setTimeout(() => {
+      if (isTyping) return;
       void saveSavedConversations(threads).catch(error => {
         console.error("Failed to save Quantum conversations:", error);
       });
     }, 700);
 
     return () => window.clearTimeout(timeout);
-  }, [authStatus, hasHydrated, preferences.saveConversations, threads]);
+  }, [authStatus, hasHydrated, isTyping, preferences.saveConversations, threads]);
 
   useEffect(() => {
     return () => {
@@ -247,6 +263,17 @@ export default function App() {
       JSON.stringify(preferences),
     );
   }, [preferences]);
+
+  useEffect(() => {
+    const storedFeedback = feedbackByMessageId();
+    setLikedIds(
+      new Set(
+        Array.from(storedFeedback.entries())
+          .filter(([, rating]) => rating === "up")
+          .map(([messageId]) => messageId),
+      ),
+    );
+  }, []);
 
   useEffect(() => {
     if (authStatus === "authenticated") return;
@@ -377,7 +404,11 @@ export default function App() {
               ...thread,
               messages: thread.messages.map((message) =>
                 message.id === messageId
-                  ? { ...message, content: `${message.content}${text}` }
+                  ? {
+                      ...message,
+                      content: `${message.content}${text}`,
+                      status: "streaming",
+                    }
                   : message,
               ),
             }
@@ -411,6 +442,10 @@ export default function App() {
                           activity,
                         ),
                       },
+                      status:
+                        message.status === "thinking"
+                          ? "thinking"
+                          : message.status || "streaming",
                     }
                   : message,
               ),
@@ -426,6 +461,8 @@ export default function App() {
     generatedImages,
     messageId,
     metadata,
+    status = "complete",
+    statusReason,
     threadId,
   }: {
     content: string;
@@ -433,6 +470,8 @@ export default function App() {
     generatedImages?: Message["generatedImages"];
     messageId: string;
     metadata?: Message["metadata"];
+    status?: Message["status"];
+    statusReason?: string;
     threadId: string;
   }) {
     const timestamp = createdAt ? new Date(createdAt) : new Date();
@@ -449,7 +488,11 @@ export default function App() {
                         ...message,
                         content,
                         generatedImages,
-                        metadata,
+                        metadata: {
+                          ...metadata,
+                          statusReason: statusReason || metadata?.statusReason,
+                        },
+                        status,
                         thinking: false,
                         timestamp,
                       }
@@ -468,12 +511,14 @@ export default function App() {
     assistantMessageId,
     attachments: activeAttachments,
     messageText,
+    signal,
     threadId,
     visibleMessages,
   }: {
     assistantMessageId: string;
     attachments: ImageAttachment[];
     messageText: string;
+    signal: AbortSignal;
     threadId: string;
     visibleMessages: Message[];
   }) {
@@ -482,7 +527,9 @@ export default function App() {
       headers: {
         "Accept": "text/event-stream",
         "Content-Type": "application/json",
+        ...(sessionUser?.uid ? { "x-quantum-user-id": sessionUser.uid } : {}),
       },
+      signal,
       body: JSON.stringify({
         message: messageText || "Describe the attached image.",
         model: selectedModel.id,
@@ -501,10 +548,7 @@ export default function App() {
         },
         webSearch: webSearchEnabled,
         responseStyle: preferences.responseStyle,
-        history: visibleMessages.slice(-8).map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
+        history: buildVisibleHistory(visibleMessages),
       }),
     });
 
@@ -576,9 +620,11 @@ export default function App() {
       id: assistantMessageId,
       role: "assistant",
       content: "",
+      status: "thinking",
       timestamp: now,
       thinking: true,
     };
+    const controller = new AbortController();
 
     if (!activeConv) setActiveConv(threadId);
     setThreads((currentThreads) => {
@@ -609,27 +655,63 @@ export default function App() {
       return sortThreads(nextThreads);
     });
     setIsTyping(true);
+    activeRequestRef.current = {
+      controller,
+      messageId: assistantMessageId,
+      threadId,
+    };
 
     try {
       await requestQuantumResponse({
         assistantMessageId,
         attachments: activeAttachments,
         messageText: text,
+        signal: controller.signal,
         threadId,
         visibleMessages: messages,
       });
     } catch (error) {
+      const stopped = isAbortError(error);
       finalizeAssistantMessage({
         content:
-          error instanceof Error
+          stopped
+            ? getAssistantContent(threadId, assistantMessageId) || "Response stopped."
+            : error instanceof Error
             ? `I could not complete that request: ${error.message}`
             : "I could not complete that request. Please try again.",
         messageId: assistantMessageId,
+        status: stopped ? "stopped" : "failed",
+        statusReason: stopped
+          ? "Stopped by user"
+          : error instanceof Error
+            ? error.message
+            : "Unknown error",
         threadId,
       });
     } finally {
+      if (activeRequestRef.current?.messageId === assistantMessageId) {
+        activeRequestRef.current = null;
+      }
       setIsTyping(false);
     }
+  }
+
+  function stopResponse() {
+    const activeRequest = activeRequestRef.current;
+    if (!activeRequest) return;
+
+    activeRequest.controller.abort();
+    finalizeAssistantMessage({
+      content:
+        getAssistantContent(activeRequest.threadId, activeRequest.messageId) ||
+        "Response stopped.",
+      messageId: activeRequest.messageId,
+      status: "stopped",
+      statusReason: "Stopped by user",
+      threadId: activeRequest.threadId,
+    });
+    activeRequestRef.current = null;
+    setIsTyping(false);
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -653,6 +735,15 @@ export default function App() {
     setTimeout(() => setCopyNotice(""), 1800);
   }
 
+  function getAssistantContent(threadId: string, messageId: string) {
+    return (
+      threads
+        .find((thread) => thread.id === threadId)
+        ?.messages.find((message) => message.id === messageId)
+        ?.content.trim() || ""
+    );
+  }
+
   async function regenerateResponse(messageId: string) {
     if (!activeThread || isTyping) return;
 
@@ -674,9 +765,11 @@ export default function App() {
       id: assistantMessageId,
       role: "assistant",
       content: "",
+      status: "thinking",
       timestamp: new Date(),
       thinking: true,
     };
+    const controller = new AbortController();
 
     setThreads((current) =>
       current.map((thread) =>
@@ -691,25 +784,44 @@ export default function App() {
       ),
     );
     setIsTyping(true);
+    activeRequestRef.current = {
+      controller,
+      messageId: assistantMessageId,
+      threadId: activeThread.id,
+    };
 
     try {
       await requestQuantumResponse({
         assistantMessageId,
         attachments: userMessage.attachments || [],
         messageText: userMessage.content,
+        signal: controller.signal,
         threadId: activeThread.id,
         visibleMessages: nextMessages.slice(0, -1),
       });
     } catch (error) {
+      const stopped = isAbortError(error);
       finalizeAssistantMessage({
         content:
-          error instanceof Error
+          stopped
+            ? getAssistantContent(activeThread.id, assistantMessageId) ||
+              "Response stopped."
+            : error instanceof Error
             ? `I could not regenerate that response: ${error.message}`
             : "I could not regenerate that response. Please try again.",
         messageId: assistantMessageId,
+        status: stopped ? "stopped" : "failed",
+        statusReason: stopped
+          ? "Stopped by user"
+          : error instanceof Error
+            ? error.message
+            : "Unknown error",
         threadId: activeThread.id,
       });
     } finally {
+      if (activeRequestRef.current?.messageId === assistantMessageId) {
+        activeRequestRef.current = null;
+      }
       setIsTyping(false);
     }
   }
@@ -778,16 +890,61 @@ export default function App() {
     );
   }
 
-  function toggleMessageLike(messageId: string) {
+  function rateMessage(messageId: string, rating: MessageFeedbackRating) {
+    const targetThread = threads.find((thread) =>
+      thread.messages.some((message) => message.id === messageId),
+    );
+    const targetMessage = targetThread?.messages.find(
+      (message) => message.id === messageId,
+    );
+    const userMessage = targetThread
+      ? previousUserMessage(targetThread, messageId)
+      : undefined;
+
+    if (!targetThread || !targetMessage) return;
+
+    const comment =
+      rating === "down"
+        ? window.prompt("What should Quantum improve next time?") || undefined
+        : undefined;
+
+    saveMessageFeedback({
+      comment,
+      messageId,
+      modelId: selectedModel.id,
+      promptLength: userMessage?.content.length || 0,
+      rating,
+      requestId: targetMessage.metadata?.requestId,
+      threadId: targetThread.id,
+      toolsUsed: targetMessage.metadata?.tools?.enabled || [],
+      userId: sessionUser?.uid,
+    });
+
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === targetThread.id
+          ? {
+              ...thread,
+              messages: thread.messages.map((message) =>
+                message.id === messageId
+                  ? { ...message, feedback: rating }
+                  : message,
+              ),
+            }
+          : thread,
+      ),
+    );
     setLikedIds((current) => {
       const next = new Set(current);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
+      if (rating === "up") {
         next.add(messageId);
+      } else {
+        next.delete(messageId);
       }
       return next;
     });
+    setCopyNotice(rating === "up" ? "Feedback saved" : "Feedback saved with note");
+    setTimeout(() => setCopyNotice(""), 1800);
   }
 
   function toggleThreadStar(threadId: string) {
@@ -824,7 +981,7 @@ export default function App() {
   }
 
   const filteredConvs = threads.filter((thread) =>
-    thread.title.toLowerCase().includes(searchQuery.toLowerCase()),
+    matchesConversationFilter(thread, searchQuery, conversationFilter),
   );
 
   function selectThread(threadId: string) {
@@ -844,8 +1001,10 @@ export default function App() {
         threads={filteredConvs}
         activeThreadId={activeConv}
         authStatus={authStatus}
+        conversationFilter={conversationFilter}
         searchQuery={searchQuery}
         isMobile={isMobileLayout}
+        onFilterChange={setConversationFilter}
         onSearchChange={setSearchQuery}
         onNewConversation={startNewConversation}
         onSelectThread={selectThread}
@@ -885,7 +1044,7 @@ export default function App() {
           showTimestamps={preferences.showTimestamps}
           onCopy={copyMessage}
           onRegenerate={regenerateResponse}
-          onToggleLike={toggleMessageLike}
+          onFeedback={rateMessage}
           onSuggestion={setInput}
         />
 
@@ -907,6 +1066,7 @@ export default function App() {
           onInputChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onSend={sendMessage}
+          onStop={stopResponse}
           onPickFiles={handleAttachmentFiles}
           onRemoveAttachment={removeAttachment}
           onToggleCodeExecution={() =>
@@ -1018,6 +1178,105 @@ function normalizeGeneratedImages(images: QuantumResponsePayload["images"]) {
       data: image.data || "",
       alt: image.alt || `Generated image ${index + 1}`,
     }));
+}
+
+function buildVisibleHistory(messages: Message[]) {
+  return messages
+    .slice(-12)
+    .filter(
+      (message) =>
+        (message.role === "user" || message.role === "assistant") &&
+        message.status !== "failed" &&
+        message.status !== "thinking" &&
+        message.status !== "streaming",
+    )
+    .map((message) => ({
+      role: message.role,
+      content: sanitizeHistoryContent(message.content),
+    }))
+    .filter((message) => message.content.trim().length > 0)
+    .slice(-8);
+}
+
+function sanitizeHistoryContent(value: string) {
+  return value
+    .replace(/^```[\w-]*\n[\s\S]*?\n```\s*/g, "")
+    .replace(/\n{2,}#{2,3}\s+Sources\s*\n[\s\S]+$/i, "")
+    .trim();
+}
+
+function matchesConversationFilter(
+  thread: ChatThread,
+  searchQuery: string,
+  filter: ConversationFilter,
+) {
+  const query = searchQuery.trim().toLowerCase();
+  const searchableText = [
+    thread.title,
+    thread.preview,
+    ...thread.messages.map((message) => message.content),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (query && !searchableText.includes(query)) return false;
+
+  const now = Date.now();
+  const ageMs = now - thread.timestamp.getTime();
+
+  if (filter === "starred") return Boolean(thread.starred);
+  if (filter === "hasImages") {
+    return thread.messages.some(
+      (message) => (message.generatedImages?.length || 0) > 0,
+    );
+  }
+  if (filter === "usedWeb") {
+    return thread.messages.some((message) =>
+      message.metadata?.tools?.enabled?.some((tool) =>
+        ["searchGrounding", "urlContext", "mapsGrounding", "fileSearch"].includes(
+          tool,
+        ),
+      ),
+    );
+  }
+  if (filter === "failed") {
+    return thread.messages.some(
+      (message) => message.status === "failed" || message.status === "stopped",
+    );
+  }
+  if (filter === "today") return ageMs < 24 * 60 * 60 * 1000;
+  if (filter === "week") return ageMs < 7 * 24 * 60 * 60 * 1000;
+
+  return true;
+}
+
+function previousUserMessage(thread: ChatThread, messageId: string) {
+  const messageIndex = thread.messages.findIndex(
+    (message) => message.id === messageId,
+  );
+  if (messageIndex <= 0) return undefined;
+
+  return [...thread.messages]
+    .slice(0, messageIndex)
+    .reverse()
+    .find((message) => message.role === "user");
+}
+
+function applyStoredFeedback(threads: ChatThread[]) {
+  const feedback = feedbackByMessageId();
+  if (feedback.size === 0) return threads;
+
+  return threads.map((thread) => ({
+    ...thread,
+    messages: thread.messages.map((message) => ({
+      ...message,
+      feedback: feedback.get(message.id) || message.feedback,
+    })),
+  }));
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 async function readQuantumEventStream(

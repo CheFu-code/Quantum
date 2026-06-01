@@ -57,6 +57,11 @@ export function parseStoredThreads(value: string | null): ChatThread[] {
           timestamp: new Date(thread.timestamp),
           messages: thread.messages.map((message) => ({
             ...message,
+            status:
+              message.status === "thinking" || message.status === "streaming"
+                ? "stopped"
+                : message.status,
+            thinking: false,
             timestamp: new Date(message.timestamp),
           })),
         })),
@@ -74,8 +79,13 @@ export function toStoredThreads(threads: ChatThread[]) {
       id: message.id,
       role: message.role,
       content: message.content,
+      feedback: message.feedback,
       generatedImages: message.generatedImages,
       metadata: message.metadata,
+      status:
+        message.status === "thinking" || message.status === "streaming"
+          ? "stopped"
+          : message.status,
       timestamp: message.timestamp.toISOString(),
     })),
   }));
