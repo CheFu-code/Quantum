@@ -27,22 +27,37 @@ export function fileToAttachment(file: File) {
       const [, base64 = ""] = result.split(",");
 
       if (!base64) {
-        reject(new Error("Could not read image."));
+        reject(new Error("Could not read file."));
         return;
       }
 
       resolve({
-        id: createId("image"),
+        id: createId(file.type.startsWith("image/") ? "image" : "file"),
         name: file.name,
-        mimeType: file.type,
+        mimeType: file.type || inferMimeType(file.name),
         data: base64,
         size: file.size,
       });
     };
 
-    reader.onerror = () => reject(new Error("Could not read image."));
+    reader.onerror = () => reject(new Error("Could not read file."));
     reader.readAsDataURL(file);
   });
+}
+
+function inferMimeType(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  if (extension === "csv") return "text/csv";
+  if (extension === "json") return "application/json";
+  if (extension === "md" || extension === "markdown") return "text/markdown";
+  if (extension === "pdf") return "application/pdf";
+  if (extension === "py") return "text/x-python";
+  if (extension === "sql") return "text/x-sql";
+  if (extension === "ts" || extension === "tsx") return "text/typescript";
+  if (extension === "js" || extension === "jsx") return "text/javascript";
+
+  return "text/plain";
 }
 
 export function getGreeting() {

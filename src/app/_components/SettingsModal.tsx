@@ -234,11 +234,29 @@ function SettingsContent({
   if (activeSection === "input") {
     return (
       <InputSettings
+        codeExecution={preferences.codeExecution}
         enterToSend={preferences.enterToSend}
+        fileSearch={preferences.fileSearch}
+        mapsGrounding={preferences.mapsGrounding}
+        serviceTier={preferences.serviceTier}
+        urlContext={preferences.urlContext}
         voiceLanguage={voiceLanguage}
         webSearchEnabled={webSearchEnabled}
+        onCodeExecutionChange={(enabled) =>
+          onPreferenceChange("codeExecution", enabled)
+        }
         onEnterToSendChange={(enabled) =>
           onPreferenceChange("enterToSend", enabled)
+        }
+        onFileSearchChange={(enabled) =>
+          onPreferenceChange("fileSearch", enabled)
+        }
+        onMapsGroundingChange={(enabled) =>
+          onPreferenceChange("mapsGrounding", enabled)
+        }
+        onServiceTierChange={(tier) => onPreferenceChange("serviceTier", tier)}
+        onUrlContextChange={(enabled) =>
+          onPreferenceChange("urlContext", enabled)
         }
         onVoiceLanguageChange={onVoiceLanguageChange}
         onWebSearchChange={onWebSearchChange}

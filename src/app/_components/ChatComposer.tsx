@@ -1,7 +1,17 @@
 "use client";
 
 import type { KeyboardEvent, RefObject } from "react";
-import { Globe, Image, Mic, Send } from "lucide-react";
+import {
+  FileText,
+  Globe,
+  Image,
+  Link2,
+  MapPin,
+  Mic,
+  Paperclip,
+  Send,
+  SquareTerminal,
+} from "lucide-react";
 import { motion } from "motion/react";
 import type { AuthStatus, ImageAttachment } from "../_lib/types";
 
@@ -10,7 +20,11 @@ type ChatComposerProps = {
   attachments: ImageAttachment[];
   isTyping: boolean;
   authStatus: AuthStatus;
+  codeExecutionEnabled: boolean;
   enterToSend: boolean;
+  mapsGroundingEnabled: boolean;
+  supportedAttachmentAccept: string;
+  urlContextEnabled: boolean;
   webSearchEnabled: boolean;
   isListening: boolean;
   inputNotice: string;
@@ -19,8 +33,11 @@ type ChatComposerProps = {
   onInputChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
-  onPickImages: (files: FileList | null) => void | Promise<void>;
+  onPickFiles: (files: FileList | null) => void | Promise<void>;
   onRemoveAttachment: (attachmentId: string) => void;
+  onToggleCodeExecution: () => void;
+  onToggleMapsGrounding: () => void;
+  onToggleUrlContext: () => void;
   onToggleVoice: () => void;
   onToggleWebSearch: () => void;
 };
@@ -30,7 +47,11 @@ export function ChatComposer({
   attachments,
   isTyping,
   authStatus,
+  codeExecutionEnabled,
   enterToSend,
+  mapsGroundingEnabled,
+  supportedAttachmentAccept,
+  urlContextEnabled,
   webSearchEnabled,
   isListening,
   inputNotice,
@@ -39,12 +60,30 @@ export function ChatComposer({
   onInputChange,
   onKeyDown,
   onSend,
-  onPickImages,
+  onPickFiles,
   onRemoveAttachment,
+  onToggleCodeExecution,
+  onToggleMapsGrounding,
+  onToggleUrlContext,
   onToggleVoice,
   onToggleWebSearch,
 }: ChatComposerProps) {
   const canSend = Boolean(input.trim() || attachments.length > 0) && !isTyping;
+  const activeToolCount = [
+    webSearchEnabled,
+    urlContextEnabled,
+    codeExecutionEnabled,
+    mapsGroundingEnabled,
+  ].filter(Boolean).length;
+  const statusText = getStatusText({
+    activeToolCount,
+    codeExecutionEnabled,
+    enterToSend,
+    isListening,
+    mapsGroundingEnabled,
+    urlContextEnabled,
+    webSearchEnabled,
+  });
 
   return (
     <div className="border-t border-border/50 bg-background px-2 pb-3 pt-2 sm:px-4 sm:pb-4">
@@ -71,7 +110,11 @@ export function ChatComposer({
                   className="flex max-w-[150px] shrink-0 items-center gap-2 rounded-xl border border-border bg-muted/40 px-2 py-1.5 sm:max-w-[180px]"
                 >
                   <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Image size={13} />
+                    {attachment.mimeType.startsWith("image/") ? (
+                      <Image size={13} />
+                    ) : (
+                      <FileText size={13} />
+                    )}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs text-foreground/80">
                     {attachment.name}
@@ -80,7 +123,7 @@ export function ChatComposer({
                     type="button"
                     onClick={() => onRemoveAttachment(attachment.id)}
                     className="text-xs text-muted-foreground hover:text-foreground"
-                    title="Remove image"
+                    title="Remove attachment"
                   >
                     x
                   </button>
@@ -91,10 +134,10 @@ export function ChatComposer({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={supportedAttachmentAccept}
             multiple
             className="hidden"
-            onChange={(event) => void onPickImages(event.target.files)}
+            onChange={(event) => void onPickFiles(event.target.files)}
           />
           <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1 sm:gap-1.5 sm:px-3">
             <button
@@ -103,11 +146,11 @@ export function ChatComposer({
               className="rounded-lg p-2 text-muted-foreground transition-all duration-150 hover:bg-muted/60 hover:text-foreground sm:p-1.5"
               title={
                 authStatus === "authenticated"
-                  ? "Upload image"
-                  : "Sign in to attach images"
+                  ? "Attach file"
+                  : "Sign in to attach files"
               }
             >
-              <Image size={15} />
+              <Paperclip size={15} />
             </button>
             <button
               type="button"
@@ -143,15 +186,57 @@ export function ChatComposer({
             >
               <Globe size={15} />
             </button>
+            <button
+              type="button"
+              onClick={onToggleUrlContext}
+              className={`rounded-lg p-2 transition-all duration-150 sm:p-1.5 ${
+                urlContextEnabled
+                  ? "bg-[#8ab4f8]/15 text-[#8ab4f8]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+              title={
+                urlContextEnabled
+                  ? "URL context enabled"
+                  : "Read public URLs in prompts"
+              }
+            >
+              <Link2 size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleCodeExecution}
+              className={`rounded-lg p-2 transition-all duration-150 sm:p-1.5 ${
+                codeExecutionEnabled
+                  ? "bg-[#fdd663]/15 text-[#fdd663]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+              title={
+                codeExecutionEnabled
+                  ? "Code execution enabled"
+                  : "Let Quantum run code"
+              }
+            >
+              <SquareTerminal size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleMapsGrounding}
+              className={`rounded-lg p-2 transition-all duration-150 sm:p-1.5 ${
+                mapsGroundingEnabled
+                  ? "bg-[#f28b82]/15 text-[#f28b82]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+              title={
+                mapsGroundingEnabled
+                  ? "Maps grounding enabled"
+                  : "Use Google Maps grounding"
+              }
+            >
+              <MapPin size={15} />
+            </button>
             <div className="flex-1" />
             <span className="mr-2 hidden text-[10px] text-muted-foreground/50 sm:inline">
-              {webSearchEnabled
-                ? "Web search on"
-                : isListening
-                  ? "Listening..."
-                  : enterToSend
-                    ? "Shift+Enter for newline"
-                    : "Ctrl+Enter to send"}
+              {statusText}
             </span>
             <motion.button
               onClick={onSend}
@@ -179,4 +264,30 @@ export function ChatComposer({
       </div>
     </div>
   );
+}
+
+function getStatusText({
+  activeToolCount,
+  codeExecutionEnabled,
+  enterToSend,
+  isListening,
+  mapsGroundingEnabled,
+  urlContextEnabled,
+  webSearchEnabled,
+}: {
+  activeToolCount: number;
+  codeExecutionEnabled: boolean;
+  enterToSend: boolean;
+  isListening: boolean;
+  mapsGroundingEnabled: boolean;
+  urlContextEnabled: boolean;
+  webSearchEnabled: boolean;
+}) {
+  if (activeToolCount > 1) return `${activeToolCount} Quantum tools on`;
+  if (webSearchEnabled) return "Search grounding on";
+  if (urlContextEnabled) return "URL context on";
+  if (codeExecutionEnabled) return "Code execution on";
+  if (mapsGroundingEnabled) return "Maps grounding on";
+  if (isListening) return "Listening...";
+  return enterToSend ? "Shift+Enter for newline" : "Ctrl+Enter to send";
 }

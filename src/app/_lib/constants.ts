@@ -1,7 +1,59 @@
-import type { ChatPreferences, ResponseStyle } from "./types";
+import type { ChatPreferences, ResponseStyle, ServiceTier } from "./types";
 
 export const MAX_IMAGE_ATTACHMENTS = 4;
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+export const MAX_ATTACHMENTS = 6;
+export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+
+export const SUPPORTED_ATTACHMENT_ACCEPT = [
+  "image/*",
+  "application/pdf",
+  "text/*",
+  ".csv",
+  ".json",
+  ".md",
+  ".markdown",
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".py",
+  ".sql",
+].join(",");
+
+const SUPPORTED_ATTACHMENT_EXTENSIONS = new Set([
+  "csv",
+  "json",
+  "md",
+  "markdown",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "py",
+  "sql",
+  "txt",
+]);
+
+const SUPPORTED_ATTACHMENT_MIME_TYPES = new Set([
+  "application/json",
+  "application/pdf",
+  "application/sql",
+  "application/typescript",
+  "application/xml",
+  "text/csv",
+  "text/javascript",
+  "text/jsx",
+  "text/markdown",
+  "text/plain",
+  "text/tab-separated-values",
+  "text/tsx",
+  "text/typescript",
+  "text/x-python",
+  "text/x-sql",
+  "text/xml",
+  "text/yaml",
+]);
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefuinc.com";
@@ -24,14 +76,14 @@ export const MODELS = [
     name: "Quantum Flash",
     badge: "Fast",
     color: "#81c995",
-    description: "Quick drafts, summaries, and everyday questions.",
+    description: "Fast answers for focused everyday work.",
   },
   {
     id: "pro",
     name: "Quantum Pro",
     badge: "Balanced",
     color: "#8ab4f8",
-    description: "General work with stronger reasoning and polish.",
+    description: "Balanced reasoning, research, and polish.",
   },
   {
     id: "ultra",
@@ -43,6 +95,71 @@ export const MODELS = [
 ] as const;
 
 export type QuantumModel = (typeof MODELS)[number];
+
+export const QUANTUM_MODEL_CAPABILITIES = [
+  "Thinking",
+  "Search grounding",
+  "URL context",
+  "Code execution",
+  "File search",
+  "Function calling",
+  "Structured outputs",
+  "Google Maps grounding",
+  "Caching",
+  "Batch API",
+  "Flex inference",
+  "Priority inference",
+] as const;
+
+export const QUANTUM_TOOL_CAPABILITIES = [
+  {
+    id: "webSearch",
+    label: "Search grounding",
+    description: "Ground answers in current Google Search results.",
+  },
+  {
+    id: "urlContext",
+    label: "URL context",
+    description: "Read public URLs that appear in the prompt.",
+  },
+  {
+    id: "codeExecution",
+    label: "Code execution",
+    description: "Run Python for math, data, and verification tasks.",
+  },
+  {
+    id: "mapsGrounding",
+    label: "Maps grounding",
+    description: "Use Google Maps context for places and local planning.",
+  },
+  {
+    id: "fileSearch",
+    label: "File search",
+    description: "Search configured knowledge stores.",
+  },
+] as const;
+
+export const INFERENCE_TIERS: Array<{
+  id: ServiceTier;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "standard",
+    label: "Standard",
+    description: "Default routing for interactive chat.",
+  },
+  {
+    id: "flex",
+    label: "Flex",
+    description: "Lower-cost best-effort routing for latency-tolerant work.",
+  },
+  {
+    id: "priority",
+    label: "Priority",
+    description: "Premium routing for business-critical requests.",
+  },
+];
 
 export const VOICE_LANGUAGES = [
   { id: "auto", label: "Auto" },
@@ -79,10 +196,15 @@ export const RESPONSE_STYLES: Array<{
 export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   autoScroll: true,
   compactMessages: false,
+  codeExecution: false,
   enterToSend: true,
+  fileSearch: false,
+  mapsGrounding: false,
   responseStyle: "balanced",
   saveConversations: true,
+  serviceTier: "standard",
   showTimestamps: true,
+  urlContext: true,
 };
 
 export function apiUrl(path: string) {
@@ -99,4 +221,19 @@ export function resolveResponseStyle(value: unknown): ResponseStyle {
   return RESPONSE_STYLES.some((style) => style.id === value)
     ? (value as ResponseStyle)
     : DEFAULT_CHAT_PREFERENCES.responseStyle;
+}
+
+export function resolveServiceTier(value: unknown): ServiceTier {
+  return INFERENCE_TIERS.some((tier) => tier.id === value)
+    ? (value as ServiceTier)
+    : DEFAULT_CHAT_PREFERENCES.serviceTier;
+}
+
+export function isSupportedAttachmentFile(file: File) {
+  if (file.type.startsWith("image/")) return true;
+  if (file.type.startsWith("text/")) return true;
+  if (SUPPORTED_ATTACHMENT_MIME_TYPES.has(file.type)) return true;
+
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension ? SUPPORTED_ATTACHMENT_EXTENSIONS.has(extension) : false;
 }

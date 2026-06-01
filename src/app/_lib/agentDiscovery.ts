@@ -59,7 +59,9 @@ ${siteDescription}
 - Chat with Quantum Flash, Quantum Pro, and Quantum Ultra modes.
 - Ask for research, coding support, writing, analysis, and planning help.
 - Attach images for visual understanding when signed in.
-- Use optional web search and configurable response style preferences.
+- Use optional search grounding, URL context, code execution, Maps grounding, and configured knowledge stores.
+- Choose standard, flex, or priority routing for supported workloads.
+- Use configurable response style preferences.
 - Save, rename, export, and clear conversation history through the workspace.
 
 ## User Routes

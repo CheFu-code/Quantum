@@ -39,7 +39,42 @@ export function GET() {
                       type: "string",
                       enum: ["concise", "balanced", "detailed"],
                     },
+                    responseSchema: {
+                      type: "object",
+                      description:
+                        "Optional JSON schema for structured output requests.",
+                    },
+                    serviceTier: {
+                      type: "string",
+                      enum: ["standard", "flex", "priority"],
+                    },
+                    tools: {
+                      type: "object",
+                      properties: {
+                        codeExecution: { type: "boolean" },
+                        fileSearch: { type: "boolean" },
+                        mapsGrounding: { type: "boolean" },
+                        urlContext: { type: "boolean" },
+                      },
+                      additionalProperties: false,
+                    },
                     webSearch: { type: "boolean" },
+                    attachments: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string" },
+                          mimeType: { type: "string" },
+                          data: {
+                            type: "string",
+                            description: "Base64-encoded file data.",
+                          },
+                          size: { type: "number" },
+                        },
+                        required: ["mimeType", "data"],
+                      },
+                    },
                     history: {
                       type: "array",
                       items: {
@@ -67,6 +102,7 @@ export function GET() {
                       createdAt: { type: "string", format: "date-time" },
                       message: { type: "string" },
                       model: { type: "string" },
+                      serviceTier: { type: "string" },
                       tier: { type: "string" },
                     },
                     required: ["createdAt", "message", "model", "tier"],

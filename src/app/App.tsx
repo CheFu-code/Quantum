@@ -10,12 +10,15 @@ import { TopBar } from "./_components/TopBar";
 import {
   CHEFU_LOGIN_HREF,
   DEFAULT_CHAT_PREFERENCES,
-  MAX_IMAGE_ATTACHMENTS,
-  MAX_IMAGE_SIZE,
+  MAX_ATTACHMENTS,
+  MAX_ATTACHMENT_SIZE,
   MODELS,
+  SUPPORTED_ATTACHMENT_ACCEPT,
   VOICE_LANGUAGES,
   apiUrl,
+  isSupportedAttachmentFile,
   resolveResponseStyle,
+  resolveServiceTier,
   resolveStoredModel,
   type QuantumModel,
 } from "./_lib/constants";
@@ -251,9 +254,9 @@ export default function App() {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   }
 
-  async function handleImageFiles(files: FileList | null) {
+  async function handleAttachmentFiles(files: FileList | null) {
     if (authStatus !== "authenticated") {
-      setAuthPromptFeature("image upload");
+      setAuthPromptFeature("file upload");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -261,29 +264,34 @@ export default function App() {
     const selectedFiles = Array.from(files || []);
     if (selectedFiles.length === 0) return;
 
-    const availableSlots = MAX_IMAGE_ATTACHMENTS - attachments.length;
+    const availableSlots = MAX_ATTACHMENTS - attachments.length;
     if (availableSlots <= 0) {
-      setInputNotice(`You can attach up to ${MAX_IMAGE_ATTACHMENTS} images.`);
+      setInputNotice(`You can attach up to ${MAX_ATTACHMENTS} files.`);
       return;
     }
 
-    const imageFiles = selectedFiles
-      .filter((file) => file.type.startsWith("image/"))
+    const supportedFiles = selectedFiles
+      .filter(isSupportedAttachmentFile)
       .slice(0, availableSlots);
-    const oversized = imageFiles.find((file) => file.size > MAX_IMAGE_SIZE);
+    const oversized = supportedFiles.find((file) => file.size > MAX_ATTACHMENT_SIZE);
+
+    if (supportedFiles.length === 0) {
+      setInputNotice("Attach images, PDFs, or text-based files.");
+      return;
+    }
 
     if (oversized) {
-      setInputNotice("Images must be 5 MB or smaller.");
+      setInputNotice("Attachments must be 10 MB or smaller.");
       return;
     }
 
     try {
-      const nextAttachments = await Promise.all(imageFiles.map(fileToAttachment));
+      const nextAttachments = await Promise.all(supportedFiles.map(fileToAttachment));
       setAttachments((current) => [...current, ...nextAttachments]);
       setInputNotice("");
     } catch (error) {
       setInputNotice(
-        error instanceof Error ? error.message : "Could not attach image.",
+        error instanceof Error ? error.message : "Could not attach file.",
       );
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -368,6 +376,13 @@ export default function App() {
           data,
           size,
         })),
+        serviceTier: preferences.serviceTier,
+        tools: {
+          codeExecution: preferences.codeExecution,
+          fileSearch: preferences.fileSearch,
+          mapsGrounding: preferences.mapsGrounding,
+          urlContext: preferences.urlContext,
+        },
         webSearch: webSearchEnabled,
         responseStyle: preferences.responseStyle,
         history: visibleMessages.slice(-8).map((message) => ({
@@ -763,6 +778,7 @@ export default function App() {
         <ChatMessages
           messages={messages}
           isTyping={isTyping}
+          isLoading={authStatus === "checking" || !hasHydrated}
           autoScroll={preferences.autoScroll}
           copiedId={copiedId}
           compactMessages={preferences.compactMessages}
@@ -780,7 +796,11 @@ export default function App() {
           attachments={attachments}
           isTyping={isTyping}
           authStatus={authStatus}
+          codeExecutionEnabled={preferences.codeExecution}
           enterToSend={preferences.enterToSend}
+          mapsGroundingEnabled={preferences.mapsGrounding}
+          supportedAttachmentAccept={SUPPORTED_ATTACHMENT_ACCEPT}
+          urlContextEnabled={preferences.urlContext}
           webSearchEnabled={webSearchEnabled}
           isListening={isListening}
           inputNotice={inputNotice}
@@ -789,8 +809,17 @@ export default function App() {
           onInputChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onSend={sendMessage}
-          onPickImages={handleImageFiles}
+          onPickFiles={handleAttachmentFiles}
           onRemoveAttachment={removeAttachment}
+          onToggleCodeExecution={() =>
+            updatePreference("codeExecution", !preferences.codeExecution)
+          }
+          onToggleMapsGrounding={() =>
+            updatePreference("mapsGrounding", !preferences.mapsGrounding)
+          }
+          onToggleUrlContext={() =>
+            updatePreference("urlContext", !preferences.urlContext)
+          }
           onToggleVoice={toggleVoiceInput}
           onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
         />
@@ -842,19 +871,36 @@ function parseStoredPreferences(value: string | null): ChatPreferences {
         typeof parsed.compactMessages === "boolean"
           ? parsed.compactMessages
           : DEFAULT_CHAT_PREFERENCES.compactMessages,
+      codeExecution:
+        typeof parsed.codeExecution === "boolean"
+          ? parsed.codeExecution
+          : DEFAULT_CHAT_PREFERENCES.codeExecution,
       enterToSend:
         typeof parsed.enterToSend === "boolean"
           ? parsed.enterToSend
           : DEFAULT_CHAT_PREFERENCES.enterToSend,
+      fileSearch:
+        typeof parsed.fileSearch === "boolean"
+          ? parsed.fileSearch
+          : DEFAULT_CHAT_PREFERENCES.fileSearch,
+      mapsGrounding:
+        typeof parsed.mapsGrounding === "boolean"
+          ? parsed.mapsGrounding
+          : DEFAULT_CHAT_PREFERENCES.mapsGrounding,
       responseStyle: resolveResponseStyle(parsed.responseStyle),
       saveConversations:
         typeof parsed.saveConversations === "boolean"
           ? parsed.saveConversations
           : DEFAULT_CHAT_PREFERENCES.saveConversations,
+      serviceTier: resolveServiceTier(parsed.serviceTier),
       showTimestamps:
         typeof parsed.showTimestamps === "boolean"
           ? parsed.showTimestamps
           : DEFAULT_CHAT_PREFERENCES.showTimestamps,
+      urlContext:
+        typeof parsed.urlContext === "boolean"
+          ? parsed.urlContext
+          : DEFAULT_CHAT_PREFERENCES.urlContext,
     };
   } catch {
     return DEFAULT_CHAT_PREFERENCES;

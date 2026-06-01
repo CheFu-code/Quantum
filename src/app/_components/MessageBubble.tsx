@@ -2,7 +2,15 @@
 
 import type { ReactNode } from "react";
 import NextImage from "next/image";
-import { Copy, Download, Image as ImageIcon, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
+import {
+  Copy,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  RotateCcw,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { formatTime } from "../_lib/conversations";
 import type { Message } from "../_lib/types";
@@ -50,24 +58,7 @@ export function MessageBubble({
           {msg.attachments && msg.attachments.length > 0 && (
             <div className="grid gap-2">
               {msg.attachments.map((attachment) => (
-                <figure
-                  key={attachment.id}
-                  className="overflow-hidden rounded-xl border border-primary/20 bg-primary/10"
-                >
-                  <NextImage
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                    alt={attachment.name}
-                    width={720}
-                    height={480}
-                    unoptimized
-                    className="max-h-60 w-full object-contain sm:max-h-72"
-                    sizes="(max-width: 768px) 75vw, 520px"
-                  />
-                  <figcaption className="flex items-center gap-1.5 border-t border-primary/15 px-2 py-1 text-xs text-foreground/70">
-                    <ImageIcon size={12} />
-                    <span className="truncate">{attachment.name}</span>
-                  </figcaption>
-                </figure>
+                <AttachmentPreview key={attachment.id} attachment={attachment} />
               ))}
             </div>
           )}
@@ -156,6 +147,44 @@ export function MessageBubble({
       </div>
     </motion.div>
   );
+}
+
+function AttachmentPreview({ attachment }: { attachment: NonNullable<Message["attachments"]>[number] }) {
+  if (!attachment.mimeType.startsWith("image/")) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-foreground/75">
+        <FileText size={14} />
+        <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+        <span className="shrink-0 text-[10px] uppercase text-muted-foreground/70">
+          {formatFileSize(attachment.size)}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <figure className="overflow-hidden rounded-xl border border-primary/20 bg-primary/10">
+      <NextImage
+        src={`data:${attachment.mimeType};base64,${attachment.data}`}
+        alt={attachment.name}
+        width={720}
+        height={480}
+        unoptimized
+        className="max-h-60 w-full object-contain sm:max-h-72"
+        sizes="(max-width: 768px) 75vw, 520px"
+      />
+      <figcaption className="flex items-center gap-1.5 border-t border-primary/15 px-2 py-1 text-xs text-foreground/70">
+        <ImageIcon size={12} />
+        <span className="truncate">{attachment.name}</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+function formatFileSize(size: number) {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+  return `${size} B`;
 }
 
 function ActionButton({

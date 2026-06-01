@@ -79,8 +79,12 @@ export function WebMCPProvider() {
           capabilities: [
             "AI chat",
             "model mode selection",
-            "optional web search",
-            "image input for signed-in users",
+            "optional search grounding",
+            "URL context",
+            "code execution",
+            "Maps grounding",
+            "file-backed knowledge search",
+            "image, PDF, and text file input for signed-in users",
             "conversation history controls",
           ],
           routes: {

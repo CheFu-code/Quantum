@@ -99,7 +99,10 @@ export async function POST(request: Request) {
         content: [
           {
             type: "text",
-            text: `${siteName}: ${siteDescription}`,
+            text: [
+              `${siteName}: ${siteDescription}`,
+              "Capabilities: chat, search grounding, URL context, code execution, Maps grounding, configured knowledge search, file attachments, and conversation controls.",
+            ].join("\n"),
           },
         ],
       });

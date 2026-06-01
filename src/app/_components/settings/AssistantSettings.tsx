@@ -1,6 +1,7 @@
-import { Check, LayoutList, Sparkles } from "lucide-react";
+import { Blocks, Check, LayoutList, Sparkles } from "lucide-react";
 import {
   MODELS,
+  QUANTUM_MODEL_CAPABILITIES,
   RESPONSE_STYLES,
   type QuantumModel,
 } from "../../_lib/constants";
@@ -68,6 +69,23 @@ export function AssistantSettings({
               </button>
             );
           })}
+        </div>
+      </SettingPanel>
+
+      <SettingPanel
+        icon={Blocks}
+        title="Quantum capabilities"
+        description="Quantum exposes the capabilities that are useful in a chat workspace."
+      >
+        <div className="flex flex-wrap gap-2">
+          {QUANTUM_MODEL_CAPABILITIES.map((capability) => (
+            <span
+              key={capability}
+              className="rounded-full border border-border bg-muted/20 px-3 py-1.5 text-xs font-medium text-muted-foreground"
+            >
+              {capability}
+            </span>
+          ))}
         </div>
       </SettingPanel>
 

@@ -28,3 +28,9 @@ https://myaccount.chefuinc.com/login?app=quantum
 ```
 
 Set `NEXT_PUBLIC_CHEFU_ACCOUNT_URL` and `NEXT_PUBLIC_QUANTUM_APP_URL` for deployed environments.
+
+## AI Runtime
+
+Set server-only AI credentials in `.env.local`. Quantum supports search grounding,
+URL context, code execution, Maps grounding, configured file search stores,
+thinking budgets, and standard/flex/priority service tiers through the chat API.

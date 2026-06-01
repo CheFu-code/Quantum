@@ -1,6 +1,15 @@
 "use client";
 
-import { Brain, ChevronRight, Code, FileText, Globe, Layers, Zap } from "lucide-react";
+import {
+  Brain,
+  ChevronRight,
+  Code,
+  FileText,
+  Globe,
+  Link2,
+  MapPin,
+  SquareTerminal,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { getGreeting } from "../_lib/input";
 import { QuantumLogo } from "./QuantumLogo";
@@ -13,10 +22,11 @@ const SUGGESTIONS = [
 ];
 
 const CAPABILITY_CHIPS = [
-  { icon: Zap, label: "1M token context" },
-  { icon: Layers, label: "Multimodal" },
-  { icon: Brain, label: "Deep reasoning" },
-  { icon: Code, label: "Code execution" },
+  { icon: Brain, label: "Thinking" },
+  { icon: Globe, label: "Search grounding" },
+  { icon: Link2, label: "URL context" },
+  { icon: SquareTerminal, label: "Code execution" },
+  { icon: MapPin, label: "Maps grounding" },
 ];
 
 export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {

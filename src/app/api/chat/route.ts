@@ -14,7 +14,15 @@ type ChatRequest = {
   history?: Array<{ role?: string; content?: string }>;
   message?: string;
   model?: string;
+  responseSchema?: unknown;
   responseStyle?: string;
+  serviceTier?: string;
+  tools?: {
+    codeExecution?: boolean;
+    fileSearch?: boolean;
+    mapsGrounding?: boolean;
+    urlContext?: boolean;
+  };
   webSearch?: boolean;
 };
 
@@ -31,6 +39,22 @@ type GeminiResponse = {
           mime_type?: string;
           data?: string;
         };
+        executableCode?: {
+          language?: string;
+          code?: string;
+        };
+        executable_code?: {
+          language?: string;
+          code?: string;
+        };
+        codeExecutionResult?: {
+          outcome?: string;
+          output?: string;
+        };
+        code_execution_result?: {
+          outcome?: string;
+          output?: string;
+        };
       }>;
     };
     finishReason?: string;
@@ -40,6 +64,33 @@ type GeminiResponse = {
           title?: string;
           uri?: string;
         };
+        maps?: {
+          placeId?: string;
+          title?: string;
+          uri?: string;
+        };
+        retrievedContext?: {
+          title?: string;
+          uri?: string;
+          text?: string;
+        };
+        retrieved_context?: {
+          title?: string;
+          uri?: string;
+          text?: string;
+        };
+      }>;
+    };
+    urlContextMetadata?: {
+      urlMetadata?: Array<{
+        retrievedUrl?: string;
+        urlRetrievalStatus?: string;
+      }>;
+    };
+    url_context_metadata?: {
+      url_metadata?: Array<{
+        retrieved_url?: string;
+        url_retrieval_status?: string;
       }>;
     };
   }>;
@@ -49,7 +100,21 @@ type GeminiResponse = {
   promptFeedback?: {
     blockReason?: string;
   };
+  usageMetadata?: {
+    cachedContentTokenCount?: number;
+    thoughtsTokenCount?: number;
+    totalTokenCount?: number;
+  };
+  usage_metadata?: {
+    cached_content_token_count?: number;
+    thoughts_token_count?: number;
+    total_token_count?: number;
+  };
 };
+
+type GeminiResponsePart = NonNullable<
+  NonNullable<NonNullable<GeminiResponse["candidates"]>[number]["content"]>["parts"]
+>[number];
 
 type GeneratedImage = {
   id: string;
@@ -93,8 +158,13 @@ const MODEL_BY_TIER: Record<ModelTier, () => string> = {
 };
 
 const IMAGE_MODEL = () =>
-  process.env.QUANTUM_GEMINI_IMAGE_MODEL ||
-  "gemini-3.1-flash-image-preview";
+  process.env.QUANTUM_GEMINI_IMAGE_MODEL?.trim() || "";
+
+const FILE_SEARCH_STORE_NAMES = () =>
+  (process.env.QUANTUM_GEMINI_FILE_SEARCH_STORES || "")
+    .split(",")
+    .map((store) => store.trim())
+    .filter(Boolean);
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as ChatRequest;
@@ -112,7 +182,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Quantum is not connected to Gemini yet. Add GEMINI_API_KEY to Quantum/.env.local and restart the dev server.",
+          "Quantum is not connected to its AI service yet. Add server AI credentials to Quantum/.env.local and restart the dev server.",
       },
       { status: 503 },
     );
@@ -123,9 +193,13 @@ export async function POST(request: Request) {
     "https://generativelanguage.googleapis.com/v1beta"
   ).replace(/\/$/, "");
   const tier = resolveTier(body.model);
-  const wantsGeneratedImage = shouldUseImageGeneration(message, body.attachments);
+  const imageModel = IMAGE_MODEL();
+  const wantsGeneratedImage =
+    Boolean(imageModel) && shouldUseImageGeneration(message, body.attachments);
   const model = resolveModel(tier, wantsGeneratedImage);
+  const publicModel = resolvePublicModelName(tier);
   const maxOutputTokens = Number(process.env.QUANTUM_MAX_OUTPUT_TOKENS || 2048);
+  const serviceTier = resolveServiceTier(body.serviceTier);
   const attachments = normalizeAttachments(body.attachments);
   const userParts: GeminiPart[] = [
     { text: message },
@@ -139,17 +213,41 @@ export async function POST(request: Request) {
 
   const payload: Record<string, unknown> = {
     systemInstruction: {
-      parts: [{ text: buildSystemPrompt(body.responseStyle) }],
+      parts: [{ text: buildSystemPrompt(body.responseStyle, Boolean(imageModel)) }],
     },
     contents: [
       ...normalizeHistory(body.history),
       { role: "user" satisfies GeminiRole, parts: userParts },
     ],
-    generationConfig: buildGenerationConfig(maxOutputTokens, wantsGeneratedImage),
+    generationConfig: buildGenerationConfig({
+      includeImageOutput: wantsGeneratedImage,
+      maxOutputTokens,
+      responseSchema: body.responseSchema,
+      tier,
+    }),
   };
 
-  if (body.webSearch) {
-    payload.tools = [{ google_search: {} }];
+  const toolConfig = buildGeminiToolConfig({
+    attachments,
+    message,
+    request: body,
+  });
+
+  if (toolConfig.tools.length > 0) {
+    payload.tools = toolConfig.tools;
+  }
+
+  if (toolConfig.toolConfig) {
+    payload.toolConfig = toolConfig.toolConfig;
+  }
+
+  if (serviceTier !== "standard") {
+    payload.service_tier = serviceTier;
+  }
+
+  const cachedContent = process.env.QUANTUM_GEMINI_CACHED_CONTENT?.trim();
+  if (cachedContent) {
+    payload.cachedContent = cachedContent;
   }
 
   try {
@@ -166,7 +264,12 @@ export async function POST(request: Request) {
     let images = extractGeneratedImages(data, message);
     let reply = withGroundingLinks(extractReply(data), data);
     if (!reply && data.candidates?.[0]?.finishReason === "MAX_TOKENS") {
-      payload.generationConfig = buildGenerationConfig(4096, wantsGeneratedImage);
+      payload.generationConfig = buildGenerationConfig({
+        includeImageOutput: wantsGeneratedImage,
+        maxOutputTokens: 4096,
+        responseSchema: body.responseSchema,
+        tier,
+      });
       ({ response, data } = await requestGemini(baseUrl, model, apiKey, payload));
 
       if (!response.ok) {
@@ -193,7 +296,9 @@ export async function POST(request: Request) {
           createdAt: new Date().toISOString(),
           message: buildEmptyResponseMessage(data),
           images,
-          model,
+          metadata: buildResponseMetadata(data, toolConfig),
+          model: publicModel,
+          serviceTier,
           tier,
         },
         { status: 200 },
@@ -204,7 +309,9 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
       images,
       message: reply,
-      model,
+      metadata: buildResponseMetadata(data, toolConfig),
+      model: publicModel,
+      serviceTier,
       tier,
     });
   } catch (error) {
@@ -239,8 +346,18 @@ async function requestGemini(
   return { response, data };
 }
 
-function buildGenerationConfig(maxOutputTokens: number, includeImageOutput = false) {
-  return {
+function buildGenerationConfig({
+  includeImageOutput = false,
+  maxOutputTokens,
+  responseSchema,
+  tier,
+}: {
+  includeImageOutput?: boolean;
+  maxOutputTokens: number;
+  responseSchema?: unknown;
+  tier: ModelTier;
+}) {
+  const config: Record<string, unknown> = {
     maxOutputTokens:
       Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
         ? maxOutputTokens
@@ -251,6 +368,23 @@ function buildGenerationConfig(maxOutputTokens: number, includeImageOutput = fal
         }
       : {}),
   };
+
+  if (!includeImageOutput) {
+    config.thinkingConfig = {
+      thinkingBudget: resolveThinkingBudget(tier),
+    };
+  }
+
+  if (isJsonObject(responseSchema)) {
+    config.responseFormat = {
+      text: {
+        mimeType: "application/json",
+        schema: responseSchema,
+      },
+    };
+  }
+
+  return config;
 }
 
 function resolveTier(value?: string): ModelTier {
@@ -258,7 +392,118 @@ function resolveTier(value?: string): ModelTier {
   return MODEL_TIERS.find((tier) => tier === normalized) || "pro";
 }
 
-function buildSystemPrompt(responseStyle?: string) {
+function resolveServiceTier(value?: string) {
+  const normalized = value?.toLowerCase();
+
+  if (normalized === "flex" || normalized === "priority") return normalized;
+
+  const configured = process.env.QUANTUM_GEMINI_SERVICE_TIER?.toLowerCase();
+  return configured === "flex" || configured === "priority"
+    ? configured
+    : "standard";
+}
+
+function resolveThinkingBudget(tier: ModelTier) {
+  const defaultBudgetByTier: Record<ModelTier, number> = {
+    flash: 512,
+    pro: 1024,
+    ultra: 2048,
+  };
+  const configured = Number(
+    process.env[`QUANTUM_GEMINI_THINKING_BUDGET_${tier.toUpperCase()}`] ||
+      process.env.QUANTUM_GEMINI_THINKING_BUDGET,
+  );
+
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : defaultBudgetByTier[tier];
+}
+
+function buildGeminiToolConfig({
+  attachments,
+  message,
+  request,
+}: {
+  attachments: ReturnType<typeof normalizeAttachments>;
+  message: string;
+  request: ChatRequest;
+}) {
+  const tools: Array<Record<string, unknown>> = [];
+  const enabled: string[] = [];
+  const skipped: string[] = [];
+  const fileSearchStores = FILE_SEARCH_STORE_NAMES();
+  const wantsFileSearch = Boolean(request.tools?.fileSearch);
+  const hasAttachments = attachments.length > 0;
+
+  if (wantsFileSearch) {
+    if (fileSearchStores.length > 0) {
+      return {
+        enabled: ["fileSearch"],
+        skipped,
+        tools: [
+          {
+            file_search: {
+              file_search_store_names: fileSearchStores,
+            },
+          },
+        ],
+        toolConfig: undefined,
+      };
+    }
+
+    skipped.push("fileSearch:not_configured");
+  }
+
+  if (request.webSearch) {
+    tools.push({ google_search: {} });
+    enabled.push("searchGrounding");
+  }
+
+  if (request.tools?.urlContext !== false && hasPublicUrls(message)) {
+    tools.push({ url_context: {} });
+    enabled.push("urlContext");
+  }
+
+  if (request.tools?.codeExecution) {
+    tools.push({ code_execution: {} });
+    enabled.push("codeExecution");
+  }
+
+  if (request.tools?.mapsGrounding) {
+    if (hasAttachments) {
+      skipped.push("mapsGrounding:text_only");
+    } else {
+      tools.push({ googleMaps: {} });
+      enabled.push("mapsGrounding");
+    }
+  }
+
+  return { enabled, skipped, tools, toolConfig: undefined };
+}
+
+function hasPublicUrls(value: string) {
+  return extractPublicUrls(value).length > 0;
+}
+
+function extractPublicUrls(value: string) {
+  return Array.from(value.matchAll(/https?:\/\/[^\s<>"')]+/gi))
+    .map((match) => match[0])
+    .filter((url) => {
+      try {
+        const parsed = new URL(url);
+        return !["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname);
+      } catch {
+        return false;
+      }
+    })
+    .slice(0, 20);
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function buildSystemPrompt(responseStyle?: string, hasImageModel = false) {
   const normalized = responseStyle?.toLowerCase();
   const styleInstruction =
     normalized === "concise"
@@ -267,12 +512,26 @@ function buildSystemPrompt(responseStyle?: string) {
         ? "The user prefers detailed answers: include reasoning, tradeoffs, examples, and practical next steps when useful."
         : "The user prefers balanced answers: be clear and structured without over-explaining.";
 
-  return `${BASE_SYSTEM_PROMPT}\n${styleInstruction}`;
+  const mediaInstruction = hasImageModel
+    ? "When image generation is available and the user requests it, create the requested visual and briefly explain the result."
+    : "If the user asks for generated audio, live voice, or generated images, explain that Quantum can help plan or describe the asset but cannot directly create that media in this chat.";
+
+  return `${BASE_SYSTEM_PROMPT}\n${styleInstruction}\n${mediaInstruction}`;
 }
 
 function resolveModel(tier: ModelTier, includeImageOutput = false) {
   const configuredModel = includeImageOutput ? IMAGE_MODEL() : MODEL_BY_TIER[tier]();
   return configuredModel.replace(/^models\//, "");
+}
+
+function resolvePublicModelName(tier: ModelTier) {
+  const names: Record<ModelTier, string> = {
+    flash: "Quantum Flash",
+    pro: "Quantum Pro",
+    ultra: "Quantum Ultra",
+  };
+
+  return names[tier];
 }
 
 function normalizeHistory(history?: ChatRequest["history"]) {
@@ -301,24 +560,58 @@ function normalizeAttachments(attachments?: ChatRequest["attachments"]) {
       return (
         typeof attachment.data === "string" &&
         typeof attachment.mimeType === "string" &&
-        attachment.mimeType.startsWith("image/") &&
+        isSupportedInlineMimeType(attachment.mimeType) &&
         attachment.data.length > 0
       );
     })
-    .slice(0, 4)
+    .slice(0, 6)
     .map((attachment) => ({
       data: String(attachment.data),
       mimeType: String(attachment.mimeType),
+      name: typeof attachment.name === "string" ? attachment.name : undefined,
     }));
+}
+
+function isSupportedInlineMimeType(mimeType: string) {
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType.startsWith("text/") ||
+    [
+      "application/json",
+      "application/pdf",
+      "application/sql",
+      "application/typescript",
+      "application/xml",
+    ].includes(mimeType)
+  );
 }
 
 function extractReply(data: GeminiResponse) {
   return (
     data.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || "")
+      ?.map(formatResponsePart)
       .join("")
       .trim() || ""
   );
+}
+
+function formatResponsePart(part: GeminiResponsePart) {
+  if (part.text) return part.text;
+
+  const executableCode = part.executableCode || part.executable_code;
+  if (executableCode?.code) {
+    const language = executableCode.language?.toLowerCase() === "python"
+      ? "python"
+      : "";
+    return `\n\n\`\`\`${language}\n${executableCode.code.trim()}\n\`\`\`\n`;
+  }
+
+  const result = part.codeExecutionResult || part.code_execution_result;
+  if (result?.output) {
+    return `\n\n\`\`\`text\n${result.output.trim()}\n\`\`\`\n`;
+  }
+
+  return "";
 }
 
 function extractGeneratedImages(data: GeminiResponse, prompt: string): GeneratedImage[] {
@@ -400,22 +693,113 @@ function buildEmptyResponseMessage(data: GeminiResponse) {
 }
 
 function withGroundingLinks(reply: string, data: GeminiResponse) {
-  const links =
-    data.candidates?.[0]?.groundingMetadata?.groundingChunks
-      ?.map((chunk) => chunk.web)
-      .filter((web): web is { title?: string; uri: string } =>
-        Boolean(web?.uri),
-      )
-      .slice(0, 5) || [];
+  const links = collectSources(data).slice(0, 6);
 
   if (!reply || links.length === 0) return reply;
 
   const sources = links
     .map((link, index) => {
-      const title = link.title?.trim() || `Source ${index + 1}`;
+      const title = link.title.trim() || `Source ${index + 1}`;
       return `${index + 1}. [${title}](${link.uri})`;
     })
     .join("\n");
 
   return `${reply}\n\n### Sources\n${sources}`;
+}
+
+function collectSources(data: GeminiResponse) {
+  const candidate = data.candidates?.[0];
+  const sources: Array<{ title: string; uri: string; type: string }> = [];
+
+  candidate?.groundingMetadata?.groundingChunks?.forEach((chunk) => {
+    if (chunk.web?.uri) {
+      sources.push({
+        title: chunk.web.title || "Web source",
+        type: "web",
+        uri: chunk.web.uri,
+      });
+    }
+
+    if (chunk.maps?.uri) {
+      sources.push({
+        title: chunk.maps.title || "Map result",
+        type: "maps",
+        uri: chunk.maps.uri,
+      });
+    }
+
+    const retrievedContext = chunk.retrievedContext || chunk.retrieved_context;
+    if (retrievedContext?.uri) {
+      sources.push({
+        title: retrievedContext.title || "Knowledge source",
+        type: "fileSearch",
+        uri: retrievedContext.uri,
+      });
+    }
+  });
+
+  const urlMetadata =
+    candidate?.urlContextMetadata?.urlMetadata ||
+    candidate?.url_context_metadata?.url_metadata ||
+    [];
+
+  urlMetadata.forEach((metadata) => {
+    const record = metadata as Record<string, string | undefined>;
+    const uri = record.retrievedUrl || record.retrieved_url;
+    const status = record.urlRetrievalStatus || record.url_retrieval_status;
+
+    if (uri && (!status || status.endsWith("_SUCCESS"))) {
+      sources.push({
+        title: readableUrlTitle(uri),
+        type: "url",
+        uri,
+      });
+    }
+  });
+
+  const seen = new Set<string>();
+  return sources.filter((source) => {
+    if (seen.has(source.uri)) return false;
+    seen.add(source.uri);
+    return true;
+  });
+}
+
+function readableUrlTitle(uri: string) {
+  try {
+    const url = new URL(uri);
+    return url.hostname.replace(/^www\./, "");
+  } catch {
+    return "URL context";
+  }
+}
+
+function buildResponseMetadata(
+  data: GeminiResponse,
+  toolConfig: ReturnType<typeof buildGeminiToolConfig>,
+) {
+  const usage = data.usageMetadata || data.usage_metadata;
+  const usageRecord = usage as Record<string, number | undefined> | undefined;
+
+  return {
+    sources: collectSources(data),
+    tools: {
+      enabled: toolConfig.enabled,
+      skipped: toolConfig.skipped,
+    },
+    usage: usageRecord
+      ? {
+          cachedContentTokenCount:
+            usageRecord.cachedContentTokenCount ||
+            usageRecord.cached_content_token_count ||
+            0,
+          thoughtsTokenCount:
+            usageRecord.thoughtsTokenCount ||
+            usageRecord.thoughts_token_count ||
+            0,
+          totalTokenCount:
+            usageRecord.totalTokenCount || usageRecord.total_token_count || 0,
+        }
+      : undefined,
+  };
 }

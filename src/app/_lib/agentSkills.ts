@@ -30,8 +30,8 @@ ${siteDescription}
 
 - General-purpose AI chat for research, coding, writing, and analysis.
 - Model mode selection across Quantum Flash, Quantum Pro, and Quantum Ultra.
-- Optional web search.
-- Image attachment support for signed-in users.
+- Optional search grounding, URL context, code execution, Maps grounding, and configured knowledge stores.
+- Image, PDF, and text-based attachment support for signed-in users.
 - Conversation history management, export, and preference controls.
 
 ## Useful URLs
@@ -61,7 +61,9 @@ Use this skill when helping a user prepare work for Quantum.
 ## Workspace Actions
 
 - Start a new conversation at ${siteUrl}/.
-- Use web search only when current information may affect the answer.
+- Use search grounding only when current information may affect the answer.
+- Use URL context when the prompt names public pages to inspect.
+- Use code execution for calculations, data checks, and reproducible analysis.
 - Export conversations when the user needs a local record.
 - Clear history when the user wants to remove saved workspace state.
 `,

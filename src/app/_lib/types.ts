@@ -1,14 +1,20 @@
 export type Role = "user" | "assistant";
 export type AuthStatus = "checking" | "authenticated" | "guest";
 export type ResponseStyle = "balanced" | "concise" | "detailed";
+export type ServiceTier = "standard" | "flex" | "priority";
 
 export type ChatPreferences = {
   autoScroll: boolean;
   compactMessages: boolean;
+  codeExecution: boolean;
   enterToSend: boolean;
+  fileSearch: boolean;
+  mapsGrounding: boolean;
   responseStyle: ResponseStyle;
   saveConversations: boolean;
+  serviceTier: ServiceTier;
   showTimestamps: boolean;
+  urlContext: boolean;
 };
 
 export type ImageAttachment = {

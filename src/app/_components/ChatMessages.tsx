@@ -13,6 +13,7 @@ import { ThinkingDots } from "./ThinkingDots";
 type ChatMessagesProps = {
   messages: Message[];
   isTyping: boolean;
+  isLoading: boolean;
   autoScroll: boolean;
   copiedId: string | null;
   compactMessages: boolean;
@@ -28,6 +29,7 @@ type ChatMessagesProps = {
 export function ChatMessages({
   messages,
   isTyping,
+  isLoading,
   autoScroll,
   copiedId,
   compactMessages,
@@ -78,7 +80,9 @@ export function ChatMessages({
 
   return (
     <div ref={scrollRef} className="scrollbar-hide relative flex-1 overflow-y-auto">
-      {messages.length === 0 ? (
+      {isLoading ? (
+        <MessageSkeletonList />
+      ) : messages.length === 0 ? (
         <EmptyState onSuggestion={onSuggestion} />
       ) : (
         <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-4 sm:space-y-6 sm:px-4 sm:py-6">
@@ -113,7 +117,7 @@ export function ChatMessages({
         </div>
       )}
 
-      {messages.length > 0 && showJumpButton && (
+      {!isLoading && messages.length > 0 && showJumpButton && (
         <button
           type="button"
           onClick={scrollToLatest}
@@ -123,6 +127,44 @@ export function ChatMessages({
           Latest
         </button>
       )}
+    </div>
+  );
+}
+
+function MessageSkeletonList() {
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-5 px-3 py-4 sm:px-4 sm:py-6">
+      <div className="flex justify-end">
+        <div className="w-[72%] max-w-lg space-y-2 rounded-2xl rounded-tr-sm border border-primary/10 bg-primary/5 px-4 py-3">
+          <div className="h-3 w-4/5 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-2/5 animate-pulse rounded-full bg-muted" />
+        </div>
+      </div>
+
+      <div className="flex gap-2 sm:gap-3">
+        <div className="mt-0.5 size-7 shrink-0 animate-pulse rounded-full bg-muted" />
+        <div className="flex-1 space-y-2 rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3">
+          <div className="h-3 w-11/12 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-10/12 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-7/12 animate-pulse rounded-full bg-muted" />
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <div className="w-[58%] max-w-md space-y-2 rounded-2xl rounded-tr-sm border border-primary/10 bg-primary/5 px-4 py-3">
+          <div className="h-3 w-3/4 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-1/2 animate-pulse rounded-full bg-muted" />
+        </div>
+      </div>
+
+      <div className="flex gap-2 sm:gap-3">
+        <div className="mt-0.5 size-7 shrink-0 animate-pulse rounded-full bg-muted" />
+        <div className="flex-1 space-y-2 rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3">
+          <div className="h-3 w-4/5 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-11/12 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-5/12 animate-pulse rounded-full bg-muted" />
+        </div>
+      </div>
     </div>
   );
 }
