@@ -178,10 +178,27 @@ const FILE_SEARCH_STORE_NAMES = () =>
     .map((store) => store.trim())
     .filter(Boolean);
 
+type QuantumIdentity = {
+  authenticated: boolean;
+  email?: string;
+  error?: string;
+  member: boolean;
+  roles: string[];
+  subject: string;
+  userId?: string;
+};
+
+const CHEFU_API_BASE_URL = () =>
+  (
+    process.env.CHEFU_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "https://api.chefuinc.com"
+  ).replace(/\/$/, "");
+
 export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
   const startedAt = Date.now();
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     keyPrefix: "quantum-chat",
     limit: 30,
     windowMs: 60_000,
@@ -231,7 +248,31 @@ export async function POST(request: Request) {
     "https://generativelanguage.googleapis.com/v1beta"
   ).replace(/\/$/, "");
   const tier = resolveTier(body.model);
-  const usageLimit = checkQuantumUsageLimit(request, tier);
+  const identity = await resolveQuantumIdentity(request);
+  const serviceTier = resolveServiceTier(body.serviceTier);
+
+  if (identity.error) {
+    return NextResponse.json(
+      { error: identity.error },
+      { headers: { "x-request-id": requestId }, status: 401 },
+    );
+  }
+
+  if (tier === "ultra" && !identity.authenticated) {
+    return NextResponse.json(
+      { error: "Sign in to use Quantum Ultra." },
+      { headers: { "x-request-id": requestId }, status: 401 },
+    );
+  }
+
+  if (serviceTier === "priority" && !hasPaidQuantumAccess(identity)) {
+    return NextResponse.json(
+      { error: "Priority inference requires an active paid CheFu account." },
+      { headers: { "x-request-id": requestId }, status: 403 },
+    );
+  }
+
+  const usageLimit = await checkQuantumUsageLimit(request, tier, identity.subject);
 
   if (usageLimit.limited) {
     logChatEvent({
@@ -260,7 +301,6 @@ export async function POST(request: Request) {
   const model = resolveModel(tier, wantsGeneratedImage);
   const publicModel = resolvePublicModelName(tier);
   const maxOutputTokens = Number(process.env.QUANTUM_MAX_OUTPUT_TOKENS || 2048);
-  const serviceTier = resolveServiceTier(body.serviceTier);
   const attachments = normalizeAttachments(body.attachments);
   const userParts: GeminiPart[] = [
     { text: message },
@@ -765,6 +805,105 @@ function resolveServiceTier(value?: string) {
   return configured === "flex" || configured === "priority"
     ? configured
     : "standard";
+}
+
+async function resolveQuantumIdentity(request: Request): Promise<QuantumIdentity> {
+  const authorization = request.headers.get("authorization")?.trim();
+  const cookie = request.headers.get("cookie")?.trim();
+  const anonymous: QuantumIdentity = {
+    authenticated: false,
+    member: false,
+    roles: [],
+    subject: anonymousUsageSubject(request),
+  };
+
+  if (!authorization && !cookie) {
+    return anonymous;
+  }
+
+  const headers: Record<string, string> = {
+    "x-chefu-app": "quantum",
+  };
+  if (authorization) headers.Authorization = authorization;
+  if (cookie) headers.Cookie = cookie;
+
+  try {
+    const response = await fetch(`${CHEFU_API_BASE_URL()}/auth/me`, {
+      cache: "no-store",
+      headers,
+    });
+
+    if (!response.ok) {
+      return authorization
+        ? {
+            ...anonymous,
+            error: "Your Quantum session has expired. Sign in again to continue.",
+          }
+        : anonymous;
+    }
+
+    const data = (await response.json().catch(() => null)) as
+      | {
+          profile?: {
+            member?: boolean;
+            subscriptionStatus?: string;
+          };
+          user?: {
+            email?: string;
+            roles?: string[];
+            uid?: string;
+          };
+        }
+      | null;
+    const uid = data?.user?.uid?.trim();
+
+    if (!uid) {
+      return authorization
+        ? {
+            ...anonymous,
+            error: "Your Quantum session could not be verified.",
+          }
+        : anonymous;
+    }
+
+    const roles = Array.isArray(data?.user?.roles)
+      ? data.user.roles.map(String)
+      : [];
+    const subscriptionStatus =
+      data?.profile?.subscriptionStatus?.trim().toLowerCase() || "";
+
+    return {
+      authenticated: true,
+      email: data?.user?.email,
+      member:
+        data?.profile?.member === true ||
+        ["active", "paid", "premium", "pro"].includes(subscriptionStatus),
+      roles,
+      subject: `user:${uid}`,
+      userId: uid,
+    };
+  } catch {
+    return authorization
+      ? {
+          ...anonymous,
+          error: "Quantum could not verify your account session.",
+        }
+      : anonymous;
+  }
+}
+
+function hasPaidQuantumAccess(identity: QuantumIdentity) {
+  if (identity.member) return true;
+
+  return identity.roles.some((role) =>
+    ["admin", "owner", "premium", "pro"].includes(role.trim().toLowerCase()),
+  );
+}
+
+function anonymousUsageSubject(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0];
+  const realIp = request.headers.get("x-real-ip");
+  return `anonymous:${(forwardedFor || realIp || "unknown").trim()}`;
 }
 
 function resolveThinkingBudget(tier: ModelTier) {

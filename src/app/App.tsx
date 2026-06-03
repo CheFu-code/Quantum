@@ -25,6 +25,7 @@ import {
 import {
   clearLocalConversationStorage,
   createId,
+  deleteSavedConversation,
   loadSavedConversations,
   previewText,
   saveSavedConversations,
@@ -708,7 +709,6 @@ export default function App() {
       headers: {
         "Accept": "text/event-stream",
         "Content-Type": "application/json",
-        ...(sessionUser?.uid ? { "x-quantum-user-id": sessionUser.uid } : {}),
       },
       signal,
       body: JSON.stringify({
@@ -1167,6 +1167,9 @@ export default function App() {
     const nextThreads = threads.filter((thread) => thread.id !== threadId);
 
     setThreads(nextThreads);
+    void deleteSavedConversation(threadId).catch(error => {
+      console.error("Failed to delete Quantum conversation:", error);
+    });
 
     if (activeConv === threadId) {
       setActiveConv(nextThreads[0]?.id || "");

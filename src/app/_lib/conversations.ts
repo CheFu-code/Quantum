@@ -121,19 +121,57 @@ export async function loadSavedConversations() {
 }
 
 export async function saveSavedConversations(threads: ChatThread[]) {
-  const response = await fetch(apiUrl("/quantum/conversations"), {
-    method: "PUT",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...sessionHeaders(),
-    },
-    body: JSON.stringify({
-      conversations: toStoredThreads(threads),
+  if (threads.length === 0) {
+    const response = await fetch(apiUrl("/quantum/conversations"), {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...sessionHeaders(),
+      },
+      body: JSON.stringify({ conversations: [] }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Could not clear conversations.");
+    }
+
+    return;
+  }
+
+  await Promise.all(
+    toStoredThreads(threads).map(async (conversation) => {
+      const response = await fetch(
+        apiUrl(`/quantum/conversations/${encodeURIComponent(conversation.id)}`),
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...sessionHeaders(),
+          },
+          body: JSON.stringify({ conversation }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Could not save conversations.");
+      }
     }),
-  });
+  );
+}
+
+export async function deleteSavedConversation(threadId: string) {
+  const response = await fetch(
+    apiUrl(`/quantum/conversations/${encodeURIComponent(threadId)}`),
+    {
+      credentials: "include",
+      headers: sessionHeaders(),
+      method: "DELETE",
+    },
+  );
 
   if (!response.ok) {
-    throw new Error("Could not save conversations.");
+    throw new Error("Could not delete conversation.");
   }
 }

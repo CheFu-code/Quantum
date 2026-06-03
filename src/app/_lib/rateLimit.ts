@@ -17,9 +17,15 @@ function getClientKey(request: Request) {
   return (forwardedFor || realIp || "unknown").trim();
 }
 
-export function checkRateLimit(request: Request, options: RateLimitOptions) {
+export async function checkRateLimit(request: Request, options: RateLimitOptions) {
   const now = Date.now();
   const key = `${options.keyPrefix}:${getClientKey(request)}`;
+  const distributed = await checkDistributedRateLimit(key, options);
+
+  if (distributed) {
+    return distributed;
+  }
+
   const current = buckets.get(key);
   const bucket =
     current && current.resetAt > now
@@ -45,4 +51,53 @@ export function checkRateLimit(request: Request, options: RateLimitOptions) {
     headers,
     limited: bucket.count > options.limit,
   };
+}
+
+async function checkDistributedRateLimit(
+  key: string,
+  options: RateLimitOptions,
+) {
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+
+  if (!url || !token) return null;
+
+  try {
+    const response = await fetch(`${url.replace(/\/$/, "")}/pipeline`, {
+      body: JSON.stringify([
+        ["INCR", key],
+        ["PEXPIRE", key, options.windowMs, "NX"],
+        ["PTTL", key],
+      ]),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as Array<{ result?: unknown }>;
+    const count = Number(data[0]?.result);
+    const ttlMs = Number(data[2]?.result);
+
+    if (!Number.isFinite(count) || !Number.isFinite(ttlMs)) return null;
+
+    const retryAfterSeconds = Math.max(1, Math.ceil(ttlMs / 1000));
+
+    return {
+      headers: {
+        "RateLimit-Limit": String(options.limit),
+        "RateLimit-Remaining": String(Math.max(0, options.limit - count)),
+        "RateLimit-Reset": String(retryAfterSeconds),
+        "Retry-After": String(retryAfterSeconds),
+      },
+      limited: count > options.limit,
+    };
+  } catch {
+    return null;
+  }
 }
