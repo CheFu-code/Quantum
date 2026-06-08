@@ -61,13 +61,33 @@ const CHEFU_ACCOUNT_URL =
   process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://myaccount.chefuinc.com";
 const QUANTUM_APP_URL =
   process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefuinc.com";
+const QUANTUM_MOBILE_SCHEME =
+  process.env.NEXT_PUBLIC_QUANTUM_MOBILE_SCHEME || "quantum";
+const QUANTUM_ANDROID_PACKAGE =
+  process.env.NEXT_PUBLIC_QUANTUM_ANDROID_PACKAGE || "com.chefuinc.quantum";
 
 export const CHEFU_ACCOUNT_BASE = CHEFU_ACCOUNT_URL.replace(/\/$/, "");
 export const CHEFU_LOGIN_HREF = `${CHEFU_ACCOUNT_BASE}/login?app=quantum&returnTo=${encodeURIComponent(QUANTUM_APP_URL)}`;
 export const CHEFU_ACCOUNT_MANAGE_HREF = `${CHEFU_ACCOUNT_BASE}/account`;
+export const QUANTUM_WEB_HREF = QUANTUM_APP_URL.replace(/\/$/, "");
+export const QUANTUM_MOBILE_DEEP_LINK = `${QUANTUM_MOBILE_SCHEME}://`;
 
 export function buildChefuLogoutHref(returnTo = QUANTUM_APP_URL) {
   return `${CHEFU_ACCOUNT_BASE}/logout?app=quantum&returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+export function buildQuantumMobileLaunchHref({
+  fallbackUrl,
+  platform,
+}: {
+  fallbackUrl: string;
+  platform: "android" | "ios" | "other";
+}) {
+  if (platform === "android") {
+    return `intent:///#Intent;scheme=${QUANTUM_MOBILE_SCHEME};package=${QUANTUM_ANDROID_PACKAGE};S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
+  }
+
+  return QUANTUM_MOBILE_DEEP_LINK;
 }
 
 export const MODELS = [

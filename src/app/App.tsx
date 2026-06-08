@@ -5,6 +5,7 @@ import { AuthPromptModal } from "./_components/AuthPromptModal";
 import { ChatComposer } from "./_components/ChatComposer";
 import { ChatMessages } from "./_components/ChatMessages";
 import { ChatSidebar } from "./_components/ChatSidebar";
+import { MobileAppLauncher } from "./_components/MobileAppLauncher";
 import { SettingsModal } from "./_components/SettingsModal";
 import { TopBar } from "./_components/TopBar";
 import {
@@ -1228,6 +1229,8 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen((value) => !value)}
           onSelectModel={setSelectedModel}
         />
+
+        <MobileAppLauncher />
 
         <ChatMessages
           messages={messages}
