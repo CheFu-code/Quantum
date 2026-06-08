@@ -23,7 +23,6 @@ type ChatMessagesProps = {
   onCopy: (id: string, content: string) => void;
   onRegenerate: (messageId: string) => void;
   onFeedback: (messageId: string, rating: "up" | "down") => void;
-  onSuggestion: (text: string) => void;
 };
 
 export function ChatMessages({
@@ -39,7 +38,6 @@ export function ChatMessages({
   onCopy,
   onRegenerate,
   onFeedback,
-  onSuggestion,
 }: ChatMessagesProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showJumpButton, setShowJumpButton] = useState(false);
@@ -90,7 +88,7 @@ export function ChatMessages({
       {isLoading ? (
         <MessageSkeletonList />
       ) : messages.length === 0 ? (
-        <EmptyState onSuggestion={onSuggestion} />
+        <EmptyState />
       ) : (
         <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-4 sm:space-y-6 sm:px-4 sm:py-6">
           {messages.map((message) => (

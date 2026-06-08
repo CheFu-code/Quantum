@@ -1245,7 +1245,6 @@ export default function App() {
           onCopy={copyMessage}
           onRegenerate={regenerateResponse}
           onFeedback={rateMessage}
-          onSuggestion={setInput}
         />
 
         <ChatComposer
