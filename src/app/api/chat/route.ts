@@ -867,13 +867,17 @@ function buildGeminiToolConfig({
         enabled.push("urlContext");
     }
 
-    if (request.tools?.codeExecution) {
+    const wantsCodeExecution = Boolean(request.tools?.codeExecution);
+
+    if (wantsCodeExecution) {
         tools.push({ code_execution: {} });
         enabled.push("codeExecution");
     }
 
     if (request.tools?.mapsGrounding) {
-        if (hasAttachments) {
+        if (wantsCodeExecution) {
+            skipped.push("mapsGrounding:incompatible_with_code_execution");
+        } else if (hasAttachments) {
             skipped.push("mapsGrounding:text_only");
         } else {
             tools.push({ googleMaps: {} });
