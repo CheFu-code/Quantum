@@ -92,7 +92,7 @@ export function MessageBubble({
             </div>
             <div className="flex-1 min-w-0">
                 <div
-                    className={`rounded-2xl rounded-tl-sm bg-card border border-border ${compact ? "px-3 py-2" : "px-4 py-3"
+                    className={`${compact ? "py-1" : "py-2"
                         }`}
                 >
                     {normalizedMessage.activities.length > 0 && (

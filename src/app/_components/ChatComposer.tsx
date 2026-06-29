@@ -192,7 +192,7 @@ export function ChatComposer({
                 value={input}
                 onChange={(event) => onInputChange(event.target.value)}
                 onKeyDown={onKeyDown}
-                placeholder="Ask Quantum"
+                placeholder="Ask Quantum anything..."
                 rows={1}
                 disabled={disabled}
                 className="scrollbar-hide min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60 sm:text-[15px]"
