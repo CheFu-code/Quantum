@@ -216,10 +216,10 @@ export const RESPONSE_STYLES: Array<{
 export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   autoScroll: true,
   compactMessages: false,
-  codeExecution: false,
+  codeExecution: true,
   enterToSend: true,
-  fileSearch: false,
-  mapsGrounding: false,
+  fileSearch: true,
+  mapsGrounding: true,
   responseStyle: "balanced",
   saveConversations: true,
   serviceTier: "standard",

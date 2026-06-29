@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { formatTime } from "../_lib/conversations";
 import type { ChatThread } from "../_lib/types";
 
@@ -19,18 +19,17 @@ export function ConversationItem({
 }: ConversationItemProps) {
   return (
     <div
-      className={`group mb-0.5 flex w-full items-center rounded-xl px-2 py-1 transition-all duration-150 ${active ? "bg-primary/10" : "hover:bg-muted/40"}`}
+      className={`group flex min-h-9 w-full items-center rounded-full px-3 transition ${active ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/75"}`}
     >
       <button
         type="button"
         onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
       >
-        <MessageSquare size={11} className={active ? "text-primary" : "text-muted-foreground"} />
-        <span className={`text-xs font-medium truncate flex-1 ${active ? "text-primary" : "text-foreground/80"}`}>
+        <span className={`flex-1 truncate text-sm font-medium ${active ? "text-sidebar-foreground" : "text-sidebar-foreground/90"}`}>
           {conv.title}
         </span>
-        <span className="text-[9px] text-muted-foreground/60 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="shrink-0 text-[10px] text-muted-foreground/60 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           {formatTime(conv.timestamp)}
         </span>
       </button>
@@ -38,10 +37,10 @@ export function ConversationItem({
         type="button"
         onClick={onToggleStar}
         title={conv.starred ? "Remove from starred" : "Star conversation"}
-        className={`rounded-md p-1 transition-all ${
+        className={`rounded-full p-1 transition ${
           conv.starred
-            ? "text-[#fdd663] opacity-100"
-            : "text-muted-foreground/50 opacity-0 hover:text-[#fdd663] group-hover:opacity-100"
+            ? "text-[var(--chart-3)] opacity-100 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            : "text-muted-foreground/50 opacity-0 hover:text-[var(--chart-3)] focus-visible:text-[var(--chart-3)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 group-focus-within:opacity-100 group-hover:opacity-100"
         }`}
       >
         <Star size={11} fill={conv.starred ? "currentColor" : "none"} />

@@ -97,6 +97,7 @@ export default function App() {
   const [preferences, setPreferences] = useState<ChatPreferences>(
     DEFAULT_CHAT_PREFERENCES,
   );
+  const [preferencesHydrated, setPreferencesHydrated] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [inputNotice, setInputNotice] = useState("");
@@ -249,38 +250,75 @@ export default function App() {
 
   useEffect(() => {
     const storedModel = window.localStorage.getItem("quantum-selected-model");
-    const storedWebSearch =
-      window.localStorage.getItem("quantum-web-search-enabled") === "true";
+    const storedWebSearch = window.localStorage.getItem(
+      "quantum-web-search-enabled",
+    );
+    const shouldDefaultToolsOn =
+      window.localStorage.getItem("quantum-tools-defaulted-on") !== "true";
     const storedVoiceLanguage =
       window.localStorage.getItem("quantum-voice-language") || "auto";
-    const storedPreferences = parseStoredPreferences(
-      window.localStorage.getItem("quantum-chat-preferences"),
+    const storedPreferencesValue = window.localStorage.getItem(
+      "quantum-chat-preferences",
     );
+    const storedPreferenceValues = parseStoredPreferenceValues(
+      storedPreferencesValue,
+    );
+    const storedPreferences = parseStoredPreferences(storedPreferencesValue);
+    const migratedPreferences = shouldDefaultToolsOn
+      ? {
+          ...storedPreferences,
+          codeExecution:
+            typeof storedPreferenceValues?.codeExecution === "boolean"
+              ? storedPreferences.codeExecution
+              : true,
+          fileSearch:
+            typeof storedPreferenceValues?.fileSearch === "boolean"
+              ? storedPreferences.fileSearch
+              : true,
+          mapsGrounding:
+            typeof storedPreferenceValues?.mapsGrounding === "boolean"
+              ? storedPreferences.mapsGrounding
+              : true,
+          urlContext:
+            typeof storedPreferenceValues?.urlContext === "boolean"
+              ? storedPreferences.urlContext
+              : true,
+        }
+      : storedPreferences;
 
     setSelectedModel(resolveStoredModel(storedModel));
-    setWebSearchEnabled(storedWebSearch);
-    setPreferences(storedPreferences);
+    setWebSearchEnabled(
+      storedWebSearch === null ? true : storedWebSearch === "true",
+    );
+    setPreferences(migratedPreferences);
+    if (shouldDefaultToolsOn) {
+      window.localStorage.setItem("quantum-tools-defaulted-on", "true");
+    }
     setVoiceLanguage(
       VOICE_LANGUAGES.some((language) => language.id === storedVoiceLanguage)
         ? storedVoiceLanguage
         : "auto",
     );
+    setPreferencesHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!preferencesHydrated) return;
     window.localStorage.setItem("quantum-selected-model", selectedModel.id);
-  }, [selectedModel.id]);
+  }, [preferencesHydrated, selectedModel.id]);
 
   useEffect(() => {
+    if (!preferencesHydrated) return;
     window.localStorage.setItem(
       "quantum-web-search-enabled",
       String(webSearchEnabled),
     );
-  }, [webSearchEnabled]);
+  }, [preferencesHydrated, webSearchEnabled]);
 
   useEffect(() => {
+    if (!preferencesHydrated) return;
     window.localStorage.setItem("quantum-voice-language", voiceLanguage);
-  }, [voiceLanguage]);
+  }, [preferencesHydrated, voiceLanguage]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -290,11 +328,12 @@ export default function App() {
   }, [voiceModeEnabled]);
 
   useEffect(() => {
+    if (!preferencesHydrated) return;
     window.localStorage.setItem(
       "quantum-chat-preferences",
       JSON.stringify(preferences),
     );
-  }, [preferences]);
+  }, [preferencesHydrated, preferences]);
 
   useEffect(() => {
     const storedFeedback = feedbackByMessageId();
@@ -780,7 +819,15 @@ export default function App() {
 
   async function sendMessage(options: SendMessageOptions = {}) {
     const text = (options.text ?? input).trim();
-    if ((!text && attachments.length === 0) || isTyping) return;
+    if (
+      !preferencesHydrated ||
+      authStatus === "checking" ||
+      !hasHydrated ||
+      (!text && attachments.length === 0) ||
+      isTyping
+    ) {
+      return;
+    }
     setInput("");
     const activeAttachments = options.source === "voice" ? [] : attachments;
     if (options.source !== "voice") setAttachments([]);
@@ -918,7 +965,7 @@ export default function App() {
 
     if (isSubmitShortcut) {
       e.preventDefault();
-      sendMessage();
+      void sendMessage();
     }
   }
 
@@ -940,7 +987,7 @@ export default function App() {
   }
 
   async function regenerateResponse(messageId: string) {
-    if (!activeThread || isTyping) return;
+    if (!preferencesHydrated || !hasHydrated || !activeThread || isTyping) return;
 
     const assistantIndex = activeThread.messages.findIndex(
       (message) => message.id === messageId,
@@ -1050,7 +1097,7 @@ export default function App() {
 
   function resetPreferences() {
     setSelectedModel(MODELS[1]);
-    setWebSearchEnabled(false);
+    setWebSearchEnabled(true);
     setVoiceLanguage("auto");
     setPreferences(DEFAULT_CHAT_PREFERENCES);
     setInputNotice("Preferences reset.");
@@ -1181,6 +1228,14 @@ export default function App() {
   const filteredConvs = threads.filter((thread) =>
     matchesConversationFilter(thread, searchQuery, conversationFilter),
   );
+  const isLoadingMessages =
+    authStatus === "checking" || !hasHydrated || !preferencesHydrated;
+  const composerDisabled =
+    authStatus === "checking" || !hasHydrated || !preferencesHydrated;
+  const composerVariant =
+    messages.length === 0 && !isLoadingMessages ? "landing" : "dock";
+  const emptyDisplayName =
+    sessionUser?.displayName?.split(" ")[0] || sessionUser?.email?.split("@")[0];
 
   function selectThread(threadId: string) {
     setActiveConv(threadId);
@@ -1193,7 +1248,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-dvh w-screen overflow-hidden bg-background">
+    <div className="flex h-dvh w-screen overflow-hidden bg-background text-foreground">
       <ChatSidebar
         open={sidebarOpen}
         threads={filteredConvs}
@@ -1201,6 +1256,7 @@ export default function App() {
         authStatus={authStatus}
         conversationFilter={conversationFilter}
         searchQuery={searchQuery}
+        sessionUser={sessionUser}
         isMobile={isMobileLayout}
         onFilterChange={setConversationFilter}
         onSearchChange={setSearchQuery}
@@ -1211,12 +1267,11 @@ export default function App() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <TopBar
           activeThread={activeThread}
           conversationCount={threads.length}
           sidebarOpen={sidebarOpen}
-          selectedModel={selectedModel}
           authStatus={authStatus}
           sessionUser={sessionUser}
           onClearConversations={clearConversations}
@@ -1227,7 +1282,6 @@ export default function App() {
           onRenameThread={renameThread}
           onToggleThreadStar={toggleThreadStar}
           onToggleSidebar={() => setSidebarOpen((value) => !value)}
-          onSelectModel={setSelectedModel}
         />
 
         <MobileAppLauncher />
@@ -1235,10 +1289,11 @@ export default function App() {
         <ChatMessages
           messages={messages}
           isTyping={isTyping}
-          isLoading={authStatus === "checking" || !hasHydrated}
+          isLoading={isLoadingMessages}
           autoScroll={preferences.autoScroll}
           copiedId={copiedId}
           compactMessages={preferences.compactMessages}
+          emptyDisplayName={emptyDisplayName}
           likedIds={likedIds}
           messagesEndRef={messagesEndRef}
           showTimestamps={preferences.showTimestamps}
@@ -1252,15 +1307,11 @@ export default function App() {
           attachments={attachments}
           isTyping={isTyping}
           authStatus={authStatus}
-          codeExecutionEnabled={preferences.codeExecution}
-          enterToSend={preferences.enterToSend}
-          mapsGroundingEnabled={preferences.mapsGrounding}
+          selectedModel={selectedModel}
           supportedAttachmentAccept={SUPPORTED_ATTACHMENT_ACCEPT}
-          urlContextEnabled={preferences.urlContext}
-          webSearchEnabled={webSearchEnabled}
-          voiceModeEnabled={voiceModeEnabled}
+          variant={composerVariant}
+          disabled={composerDisabled}
           isListening={isListening}
-          isSpeaking={isSpeaking}
           inputNotice={inputNotice}
           textareaRef={textareaRef}
           fileInputRef={fileInputRef}
@@ -1270,18 +1321,8 @@ export default function App() {
           onStop={stopResponse}
           onPickFiles={handleAttachmentFiles}
           onRemoveAttachment={removeAttachment}
-          onToggleCodeExecution={() =>
-            updatePreference("codeExecution", !preferences.codeExecution)
-          }
-          onToggleMapsGrounding={() =>
-            updatePreference("mapsGrounding", !preferences.mapsGrounding)
-          }
-          onToggleUrlContext={() =>
-            updatePreference("urlContext", !preferences.urlContext)
-          }
+          onSelectModel={setSelectedModel}
           onToggleVoice={toggleVoiceInput}
-          onToggleVoiceMode={toggleVoiceMode}
-          onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
         />
       </div>
 
@@ -1316,55 +1357,64 @@ export default function App() {
   );
 }
 
-function parseStoredPreferences(value: string | null): ChatPreferences {
-  if (!value) return DEFAULT_CHAT_PREFERENCES;
+function parseStoredPreferenceValues(
+  value: string | null,
+): Partial<ChatPreferences> | null {
+  if (!value) return null;
 
   try {
-    const parsed = JSON.parse(value) as Partial<ChatPreferences>;
-
-    return {
-      autoScroll:
-        typeof parsed.autoScroll === "boolean"
-          ? parsed.autoScroll
-          : DEFAULT_CHAT_PREFERENCES.autoScroll,
-      compactMessages:
-        typeof parsed.compactMessages === "boolean"
-          ? parsed.compactMessages
-          : DEFAULT_CHAT_PREFERENCES.compactMessages,
-      codeExecution:
-        typeof parsed.codeExecution === "boolean"
-          ? parsed.codeExecution
-          : DEFAULT_CHAT_PREFERENCES.codeExecution,
-      enterToSend:
-        typeof parsed.enterToSend === "boolean"
-          ? parsed.enterToSend
-          : DEFAULT_CHAT_PREFERENCES.enterToSend,
-      fileSearch:
-        typeof parsed.fileSearch === "boolean"
-          ? parsed.fileSearch
-          : DEFAULT_CHAT_PREFERENCES.fileSearch,
-      mapsGrounding:
-        typeof parsed.mapsGrounding === "boolean"
-          ? parsed.mapsGrounding
-          : DEFAULT_CHAT_PREFERENCES.mapsGrounding,
-      responseStyle: resolveResponseStyle(parsed.responseStyle),
-      saveConversations:
-        typeof parsed.saveConversations === "boolean"
-          ? parsed.saveConversations
-          : DEFAULT_CHAT_PREFERENCES.saveConversations,
-      serviceTier: resolveServiceTier(parsed.serviceTier),
-      showTimestamps:
-        typeof parsed.showTimestamps === "boolean"
-          ? parsed.showTimestamps
-          : DEFAULT_CHAT_PREFERENCES.showTimestamps,
-      urlContext:
-        typeof parsed.urlContext === "boolean"
-          ? parsed.urlContext
-          : DEFAULT_CHAT_PREFERENCES.urlContext,
-    };
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object"
+      ? (parsed as Partial<ChatPreferences>)
+      : null;
   } catch {
-    return DEFAULT_CHAT_PREFERENCES;
+    return null;
   }
+}
+
+function parseStoredPreferences(value: string | null): ChatPreferences {
+  const parsed = parseStoredPreferenceValues(value);
+
+  return {
+    autoScroll:
+      typeof parsed?.autoScroll === "boolean"
+        ? parsed.autoScroll
+        : DEFAULT_CHAT_PREFERENCES.autoScroll,
+    compactMessages:
+      typeof parsed?.compactMessages === "boolean"
+        ? parsed.compactMessages
+        : DEFAULT_CHAT_PREFERENCES.compactMessages,
+    codeExecution:
+      typeof parsed?.codeExecution === "boolean"
+        ? parsed.codeExecution
+        : DEFAULT_CHAT_PREFERENCES.codeExecution,
+    enterToSend:
+      typeof parsed?.enterToSend === "boolean"
+        ? parsed.enterToSend
+        : DEFAULT_CHAT_PREFERENCES.enterToSend,
+    fileSearch:
+      typeof parsed?.fileSearch === "boolean"
+        ? parsed.fileSearch
+        : DEFAULT_CHAT_PREFERENCES.fileSearch,
+    mapsGrounding:
+      typeof parsed?.mapsGrounding === "boolean"
+        ? parsed.mapsGrounding
+        : DEFAULT_CHAT_PREFERENCES.mapsGrounding,
+    responseStyle: resolveResponseStyle(parsed?.responseStyle),
+    saveConversations:
+      typeof parsed?.saveConversations === "boolean"
+        ? parsed.saveConversations
+        : DEFAULT_CHAT_PREFERENCES.saveConversations,
+    serviceTier: resolveServiceTier(parsed?.serviceTier),
+    showTimestamps:
+      typeof parsed?.showTimestamps === "boolean"
+        ? parsed.showTimestamps
+        : DEFAULT_CHAT_PREFERENCES.showTimestamps,
+    urlContext:
+      typeof parsed?.urlContext === "boolean"
+        ? parsed.urlContext
+        : DEFAULT_CHAT_PREFERENCES.urlContext,
+  };
 }
 
 function normalizeGeneratedImages(images: QuantumResponsePayload["images"]) {

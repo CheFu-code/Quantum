@@ -17,6 +17,7 @@ type ChatMessagesProps = {
   autoScroll: boolean;
   copiedId: string | null;
   compactMessages: boolean;
+  emptyDisplayName?: string;
   likedIds: Set<string>;
   messagesEndRef: RefObject<HTMLDivElement | null>;
   showTimestamps: boolean;
@@ -32,6 +33,7 @@ export function ChatMessages({
   autoScroll,
   copiedId,
   compactMessages,
+  emptyDisplayName,
   likedIds,
   messagesEndRef,
   showTimestamps,
@@ -88,9 +90,9 @@ export function ChatMessages({
       {isLoading ? (
         <MessageSkeletonList />
       ) : messages.length === 0 ? (
-        <EmptyState />
+        <EmptyState displayName={emptyDisplayName} />
       ) : (
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-4 sm:space-y-6 sm:px-4 sm:py-6">
+        <div className="mx-auto w-full max-w-4xl space-y-4 px-3 pb-6 pt-2 sm:space-y-6 sm:px-6 sm:pb-8 sm:pt-4">
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
@@ -111,10 +113,10 @@ export function ChatMessages({
               animate={{ opacity: 1, y: 0 }}
               className="flex gap-2 sm:gap-3"
             >
-              <div className="mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-full" style={{ background: "linear-gradient(135deg, #8ab4f822, #c58af922)" }}>
+              <div className="mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <QuantumLogo />
               </div>
-              <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-card border border-border">
+              <div className="rounded-[1.5rem] border border-border bg-card px-4 py-3">
                 <ThinkingDots />
               </div>
             </motion.div>
