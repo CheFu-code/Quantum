@@ -164,3 +164,109 @@ export type SpeechRecognitionLike = {
   onend: (() => void) | null;
   onerror: ((event: { error?: string }) => void) | null;
 };
+
+
+export type GeminiResponse = {
+    candidates?: Array<{
+        content?: {
+            parts?: Array<{
+                text?: string;
+                inlineData?: {
+                    mimeType?: string;
+                    data?: string;
+                };
+                inline_data?: {
+                    mime_type?: string;
+                    data?: string;
+                };
+                executableCode?: {
+                    language?: string;
+                    code?: string;
+                };
+                executable_code?: {
+                    language?: string;
+                    code?: string;
+                };
+                codeExecutionResult?: {
+                    outcome?: string;
+                    output?: string;
+                };
+                code_execution_result?: {
+                    outcome?: string;
+                    output?: string;
+                };
+            }>;
+        };
+        finishReason?: string;
+        groundingMetadata?: {
+            groundingChunks?: Array<{
+                web?: {
+                    title?: string;
+                    uri?: string;
+                };
+                maps?: {
+                    placeId?: string;
+                    title?: string;
+                    uri?: string;
+                };
+                retrievedContext?: {
+                    title?: string;
+                    uri?: string;
+                    text?: string;
+                };
+                retrieved_context?: {
+                    title?: string;
+                    uri?: string;
+                    text?: string;
+                };
+            }>;
+        };
+        urlContextMetadata?: {
+            urlMetadata?: Array<{
+                retrievedUrl?: string;
+                urlRetrievalStatus?: string;
+            }>;
+        };
+        url_context_metadata?: {
+            url_metadata?: Array<{
+                retrieved_url?: string;
+                url_retrieval_status?: string;
+            }>;
+        };
+    }>;
+    error?: {
+        message?: string;
+    };
+    promptFeedback?: {
+        blockReason?: string;
+    };
+    usageMetadata?: {
+        cachedContentTokenCount?: number;
+        thoughtsTokenCount?: number;
+        totalTokenCount?: number;
+    };
+    usage_metadata?: {
+        cached_content_token_count?: number;
+        thoughts_token_count?: number;
+        total_token_count?: number;
+    };
+};
+
+
+
+export type ToolActivity = {
+    type: "search" | "code" | "tool";
+    title: string;
+    detail?: string;
+    code?: string;
+    output?: string;
+};
+
+export type GeminiPart =
+    | { text: string }
+    | {
+        inline_data: {
+            mime_type: string;
+            data: string;
+        };
+    };

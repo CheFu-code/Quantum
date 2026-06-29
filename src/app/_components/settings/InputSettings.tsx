@@ -60,7 +60,7 @@ export function InputSettings({
             checked={webSearchEnabled}
             description="Ground answers in current Google Search results."
             icon={Globe}
-            label="Search grounding"
+            label="Research"
             onChange={onWebSearchChange}
           />
           <ToggleRow
