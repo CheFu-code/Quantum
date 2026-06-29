@@ -126,21 +126,6 @@ export function ChatSidebar({
 
                         </div>
 
-                        <div className="px-5 pb-5">
-                            <p className="mb-2 text-sm font-medium text-muted-foreground">
-                                Notebooks
-                            </p>
-              <button
-                type="button"
-                disabled
-                className="flex h-10 w-full items-center gap-4 rounded-full text-sm font-medium text-sidebar-foreground opacity-45 transition disabled:cursor-not-allowed"
-                title="Notebook creation is not available yet"
-              >
-                <Plus size={20} />
-                New notebook
-              </button>
-                        </div>
-
                         <div className="scrollbar-hide flex-1 overflow-y-auto px-4 pb-4">
                             {starredThreads.length > 0 && (
                                 <ThreadSection

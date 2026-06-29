@@ -19,6 +19,7 @@ import {
 import { motion } from "motion/react";
 import { formatTime } from "../_lib/conversations";
 import type { Message, MessageSource, MessageToolActivity } from "../_lib/types";
+import { isMapsSource, MapGroundingCard } from "./MapGroundingCard";
 import { MessageContent } from "./MarkdownMessage";
 import { QuantumLogo } from "./QuantumLogo";
 import { ThinkingDots } from "./ThinkingDots";
@@ -48,6 +49,9 @@ export function MessageBubble({
 }: MessageBubbleProps) {
     const isUser = msg.role === "user";
     const normalizedMessage = normalizeMessagePresentation(msg);
+    const nonMapSources = normalizedMessage.sources.filter(
+        (source) => !isMapsSource(source),
+    );
 
     if (isUser) {
         return (
@@ -106,9 +110,15 @@ export function MessageBubble({
                     ) : msg.thinking ? (
                         <ThinkingDots />
                     ) : null}
+                    {normalizedMessage.sources.some(isMapsSource) && (
+                        <MapGroundingCard
+                            content={normalizedMessage.content}
+                            sources={normalizedMessage.sources}
+                        />
+                    )}
                     {msg.thinking && normalizedMessage.content && <StreamingCursor />}
-                    {normalizedMessage.sources.length > 0 && (
-                        <SourceCards sources={normalizedMessage.sources} />
+                    {nonMapSources.length > 0 && (
+                        <SourceCards sources={nonMapSources} />
                     )}
                     {msg.generatedImages && msg.generatedImages.length > 0 && (
                         <div className="mt-4 grid gap-3">
