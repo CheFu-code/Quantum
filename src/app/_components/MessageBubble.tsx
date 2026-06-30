@@ -47,12 +47,15 @@ export function MessageBubble({
     onDislike,
     onRegenerate,
 }: MessageBubbleProps) {
+    const [expandedMessage, setExpandedMessage] = useState(false);
     const isUser = msg.role === "user";
     const normalizedMessage = normalizeMessagePresentation(msg);
     const mapSources = normalizedMessage.sources.filter(isMapsSource);
     const nonMapSources = normalizedMessage.sources.filter(
         (source) => !isMapsSource(source),
     );
+    const userMessageLines = msg.content?.split(/\r?\n/).length || 0;
+    const shouldCollapseUserMessage = isUser && userMessageLines > 4;
 
     if (isUser) {
         return (
@@ -75,7 +78,36 @@ export function MessageBubble({
                             ))}
                         </div>
                     )}
-                    {msg.content && <p>{msg.content}</p>}
+                    {msg.content && (
+                        <p
+                            className="whitespace-pre-wrap wrap-break-word"
+                            style={
+                                shouldCollapseUserMessage && !expandedMessage
+                                    ? {
+                                          display: "-webkit-box",
+                                          WebkitLineClamp: 4,
+                                          WebkitBoxOrient: "vertical",
+                                          overflow: "hidden",
+                                      }
+                                    : undefined
+                            }
+                        >
+                            {msg.content}
+                        </p>
+                    )}
+                    {shouldCollapseUserMessage && (
+                        <button
+                            type="button"
+                            onClick={() => setExpandedMessage((prev) => !prev)}
+                            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary transition hover:text-primary/80"
+                        >
+                            {expandedMessage ? "Show less" : "Show more"}
+                            <ChevronDown
+                                size={14}
+                                className={`${expandedMessage ? "rotate-180" : ""} transition-transform duration-200`}
+                            />
+                        </button>
+                    )}
                     {showTimestamp && (
                         <p className="text-right text-[9px] text-muted-foreground/45">
                             {formatTime(msg.timestamp)}

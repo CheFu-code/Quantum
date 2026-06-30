@@ -159,14 +159,7 @@ export function ChatSidebar({
                         </div>
 
                         <div className="flex shrink-0 items-center gap-3 px-4 py-5">
-                            <div className="flex size-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                                {userInitial(sessionUser)}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-sidebar-foreground">
-                                    {displayName(sessionUser, authStatus)}
-                                </p>
-                            </div>
+
                             <button
                                 type="button"
                                 onClick={() => {
