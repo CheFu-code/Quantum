@@ -531,11 +531,13 @@ export default function App() {
     };
     recognition.onerror = (event) => {
       const error = event?.error || "";
-      const message = autoSend
-        ? "Voice conversation paused. Tap voice mode to resume."
-        : error === "not-allowed" || /permission|blocked|denied/i.test(error)
-        ? "Voice input blocked. Allow microphone access and try again."
-        : "Voice input stopped. Please try again.";
+      let message = "Voice input stopped. Please try again.";
+
+      if (error === "not-allowed" || /permission|blocked|denied/i.test(error)) {
+        message = "Voice input blocked. Allow microphone access and try again.";
+      } else if (autoSend) {
+        message = "Voice conversation paused. Tap voice mode to resume.";
+      }
 
       setInputNotice(message);
       setIsListening(false);
