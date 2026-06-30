@@ -198,12 +198,28 @@ export async function POST(request: Request) {
         );
     }
     const imageModel = IMAGE_MODEL();
+    const attachments = normalizeAttachments(body.attachments);
+    const hasImageAttachments = attachments.some((attachment) =>
+        attachment.mimeType.startsWith("image/"),
+    );
     const wantsGeneratedImage =
         Boolean(imageModel) && shouldUseImageGeneration(message, body.attachments);
-    const model = resolveModel(tier, wantsGeneratedImage);
+    const shouldUseImageModel = Boolean(imageModel) &&
+        (hasImageAttachments || wantsGeneratedImage);
+
+    if (hasImageAttachments && !imageModel) {
+        return NextResponse.json(
+            {
+                error:
+                    "Image attachments require an image-capable Quantum model.",
+            },
+            { headers: { "x-request-id": requestId }, status: 400 },
+        );
+    }
+
+    const model = resolveModel(tier, shouldUseImageModel);
     const publicModel = resolvePublicModelName(tier);
     const maxOutputTokens = Number(process.env.QUANTUM_MAX_OUTPUT_TOKENS || 2048);
-    const attachments = normalizeAttachments(body.attachments);
     const userParts: GeminiPart[] = [
         { text: message },
         ...attachments.map((attachment): GeminiPart => ({
