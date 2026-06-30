@@ -91,12 +91,26 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      const v = window.localStorage.getItem("quantum-web-search-enabled");
+      return v === "true";
+    } catch {
+      return false;
+    }
+  });
   const [voiceLanguage, setVoiceLanguage] = useState("auto");
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
-  const [preferences, setPreferences] = useState<ChatPreferences>(
-    DEFAULT_CHAT_PREFERENCES,
-  );
+  const [preferences, setPreferences] = useState<ChatPreferences>(() => {
+    try {
+      if (typeof window === "undefined") return DEFAULT_CHAT_PREFERENCES;
+      const v = window.localStorage.getItem("quantum-chat-preferences");
+      return v ? (JSON.parse(v) as ChatPreferences) : DEFAULT_CHAT_PREFERENCES;
+    } catch {
+      return DEFAULT_CHAT_PREFERENCES;
+    }
+  });
   const [preferencesHydrated, setPreferencesHydrated] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -253,8 +267,6 @@ export default function App() {
     const storedWebSearch = window.localStorage.getItem(
       "quantum-web-search-enabled",
     );
-    const shouldDefaultToolsOn =
-      window.localStorage.getItem("quantum-tools-defaulted-on") !== "true";
     const storedVoiceLanguage =
       window.localStorage.getItem("quantum-voice-language") || "auto";
     const storedPreferencesValue = window.localStorage.getItem(
@@ -264,6 +276,14 @@ export default function App() {
       storedPreferencesValue,
     );
     const storedPreferences = parseStoredPreferences(storedPreferencesValue);
+
+    // Only perform the one-time "default tools on" migration when the marker
+    // is not present AND there are no persisted preferences at all. This avoids
+    // forcing defaults for returning users who already have saved prefs.
+    const shouldDefaultToolsOn =
+      window.localStorage.getItem("quantum-tools-defaulted-on") !== "true" &&
+      storedPreferencesValue === null;
+
     const migratedPreferences = shouldDefaultToolsOn
       ? {
           ...storedPreferences,
@@ -287,13 +307,22 @@ export default function App() {
       : storedPreferences;
 
     setSelectedModel(resolveStoredModel(storedModel));
-    setWebSearchEnabled(
-      storedWebSearch === null ? true : storedWebSearch === "true",
-    );
+
+    // Only override web search when there is no stored value and the migration
+    // indicates defaults should be applied. Otherwise preserve previously
+    // persisted true/false values.
+    if (storedWebSearch === null) {
+      setWebSearchEnabled(Boolean(shouldDefaultToolsOn));
+    } else {
+      setWebSearchEnabled(storedWebSearch === "true");
+    }
+
     setPreferences(migratedPreferences);
+
     if (shouldDefaultToolsOn) {
       window.localStorage.setItem("quantum-tools-defaulted-on", "true");
     }
+
     setVoiceLanguage(
       VOICE_LANGUAGES.some((language) => language.id === storedVoiceLanguage)
         ? storedVoiceLanguage

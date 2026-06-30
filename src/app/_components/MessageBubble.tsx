@@ -49,6 +49,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
     const isUser = msg.role === "user";
     const normalizedMessage = normalizeMessagePresentation(msg);
+    const mapSources = normalizedMessage.sources.filter(isMapsSource);
     const nonMapSources = normalizedMessage.sources.filter(
         (source) => !isMapsSource(source),
     );
@@ -110,11 +111,16 @@ export function MessageBubble({
                     ) : msg.thinking ? (
                         <ThinkingDots />
                     ) : null}
-                    {normalizedMessage.sources.some(isMapsSource) && (
-                        <MapGroundingCard
-                            content={normalizedMessage.content}
-                            sources={normalizedMessage.sources}
-                        />
+                    {mapSources.length > 0 && (
+                        <>
+                            {mapSources.map((msource, idx) => (
+                                <MapGroundingCard
+                                    key={`map-${idx}-${msource.uri}`}
+                                    content={normalizedMessage.content}
+                                    sources={[msource]}
+                                />
+                            ))}
+                        </>
                     )}
                     {msg.thinking && normalizedMessage.content && <StreamingCursor />}
                     {nonMapSources.length > 0 && (

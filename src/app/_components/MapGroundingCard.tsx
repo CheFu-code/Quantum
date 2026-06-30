@@ -118,10 +118,18 @@ function safeGoogleMapsUrl(value: string) {
   }
 }
 
+const ALLOWED_GOOGLE_MAPS_HOSTS = new Set([
+  "www.google.com",
+  "maps.google.com",
+  "google.com",
+]);
+
 function isGoogleMapsUrl(value: string) {
   try {
     const url = new URL(value);
-    return /^(.+\.)?google\.[^/]+$/i.test(url.hostname) && url.pathname.startsWith("/maps");
+    const host = url.hostname.toLowerCase();
+    // Only accept explicitly allowed Google hosts with the /maps path.
+    return ALLOWED_GOOGLE_MAPS_HOSTS.has(host) && url.pathname.startsWith("/maps");
   } catch {
     return false;
   }

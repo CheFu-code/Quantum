@@ -182,7 +182,10 @@ export function ChatComposer({
                 active={false}
                 disabled={disabled || !isAuthenticated}
                 label={isAuthenticated ? "Attach file" : "Sign in to attach files"}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  if (disabled || !isAuthenticated) return;
+                  fileInputRef.current?.click();
+                }}
               >
                 <Plus size={24} strokeWidth={1.8} />
               </IconButton>
@@ -220,7 +223,10 @@ export function ChatComposer({
                       : "Start voice input"
                     : "Sign in to use voice input"
                 }
-                onClick={onToggleVoice}
+                onClick={() => {
+                  if (disabled || !isAuthenticated) return;
+                  onToggleVoice();
+                }}
               >
                 <Mic size={20} />
               </IconButton>
