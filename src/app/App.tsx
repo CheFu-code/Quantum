@@ -529,12 +529,15 @@ export default function App() {
       });
       window.setTimeout(autoResize, 0);
     };
-    recognition.onerror = () => {
-      setInputNotice(
-        autoSend
-          ? "Voice conversation paused. Tap voice mode to resume."
-          : "Voice input stopped. Please try again.",
-      );
+    recognition.onerror = (event) => {
+      const error = event?.error || "";
+      const message = autoSend
+        ? "Voice conversation paused. Tap voice mode to resume."
+        : error === "not-allowed" || /permission|blocked|denied/i.test(error)
+        ? "Voice input blocked. Allow microphone access and try again."
+        : "Voice input stopped. Please try again.";
+
+      setInputNotice(message);
       setIsListening(false);
       if (autoSend) {
         setVoiceModeEnabled(false);
@@ -567,7 +570,26 @@ export default function App() {
     speechRef.current = recognition;
     setInputNotice("");
     setIsListening(true);
-    recognition.start();
+
+    try {
+      recognition.start();
+    } catch (error) {
+      const isPermissionError =
+        error instanceof Error &&
+        /(not-allowed|permission|security)/i.test(error.message);
+
+      setInputNotice(
+        isPermissionError
+          ? "Voice input blocked. Allow microphone access and try again."
+          : "Voice input stopped. Please try again.",
+      );
+      setIsListening(false);
+      speechRef.current = null;
+      if (autoSend) {
+        setVoiceModeEnabled(false);
+        voiceTurnPendingRef.current = false;
+      }
+    }
   }
 
   function stopListening() {
