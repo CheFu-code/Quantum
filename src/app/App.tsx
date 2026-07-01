@@ -836,6 +836,7 @@ export default function App() {
     }
 
     const contentType = response.headers.get("content-type") || "";
+    let hasVibrated = false;
     const data = contentType.includes("text/event-stream") && response.body
       ? await readQuantumEventStream(response, {
           onActivity: (activity) =>
@@ -844,12 +845,17 @@ export default function App() {
               messageId: assistantMessageId,
               threadId,
             }),
-          onChunk: (text) =>
+          onChunk: (text) => {
+            if (!hasVibrated && typeof window !== "undefined" && navigator.vibrate) {
+              hasVibrated = true;
+              navigator.vibrate([50, 25, 50]);
+            }
             appendAssistantContent({
               messageId: assistantMessageId,
               text,
               threadId,
-            }),
+            });
+          },
         })
       : ((await response.json()) as QuantumResponsePayload);
     const reply = data.message?.trim();
@@ -882,9 +888,6 @@ export default function App() {
       return;
     }
     setInput("");
-    if (typeof window !== "undefined" && navigator.vibrate) {
-      navigator.vibrate([50, 25, 50]);
-    }
     const activeAttachments = options.source === "voice" ? [] : attachments;
     if (options.source !== "voice") setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
