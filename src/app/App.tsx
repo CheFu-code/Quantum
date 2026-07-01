@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, type KeyboardEvent } from "react";
 import { AuthPromptModal } from "./_components/AuthPromptModal";
+import { ConfirmModal } from "./_components/ConfirmModal";
 import { ChatComposer } from "./_components/ChatComposer";
 import { ChatMessages } from "./_components/ChatMessages";
 import { ChatSidebar } from "./_components/ChatSidebar";
@@ -58,6 +59,7 @@ type QuantumResponsePayload = {
   message?: string;
   metadata?: Message["metadata"];
 };
+
 type ActiveRequest = {
   controller: AbortController;
   messageId: string;
@@ -1284,6 +1286,29 @@ export default function App() {
     }
   }
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMode, setConfirmMode] = useState<null | "delete-thread" | "clear-all">(null);
+  const [confirmThreadId, setConfirmThreadId] = useState<string | null>(null);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const [confirmDescription, setConfirmDescription] = useState("");
+
+  function requestDeleteThread(threadId: string) {
+    const thread = threads.find((t) => t.id === threadId);
+    setConfirmTitle(thread ? `Delete "${thread.title}"?` : "Delete conversation?");
+    setConfirmDescription("This cannot be undone.");
+    setConfirmThreadId(threadId);
+    setConfirmMode("delete-thread");
+    setConfirmOpen(true);
+  }
+
+  function requestClearConversations() {
+    setConfirmTitle("Clear all conversations?");
+    setConfirmDescription("This cannot be undone.");
+    setConfirmThreadId(null);
+    setConfirmMode("clear-all");
+    setConfirmOpen(true);
+  }
+
   const filteredConvs = threads.filter((thread) =>
     matchesConversationFilter(thread, searchQuery, conversationFilter),
   );
@@ -1335,6 +1360,8 @@ export default function App() {
           sessionUser={sessionUser}
           onClearConversations={clearConversations}
           onDeleteThread={deleteThread}
+          onRequestDeleteThread={requestDeleteThread}
+          onRequestClearConversations={requestClearConversations}
           onExportConversations={exportConversations}
           onNewConversation={startNewConversation}
           onOpenSettings={openSettings}
@@ -1407,8 +1434,30 @@ export default function App() {
         loginHref={CHEFU_LOGIN_HREF}
         onClose={() => setAuthPromptFeature("")}
       />
+      <ConfirmModal
+        open={confirmOpen}
+        title={confirmTitle}
+        description={confirmDescription}
+        confirmLabel={confirmMode === "clear-all" ? "Clear" : "Delete"}
+        cancelLabel="Cancel"
+        onClose={() => {
+          setConfirmOpen(false);
+          setConfirmMode(null);
+          setConfirmThreadId(null);
+        }}
+        onConfirm={() => {
+          if (confirmMode === "delete-thread" && confirmThreadId) {
+            deleteThread(confirmThreadId);
+          } else if (confirmMode === "clear-all") {
+            clearConversations();
+          }
+          setConfirmOpen(false);
+          setConfirmMode(null);
+          setConfirmThreadId(null);
+        }}
+      />
       {copyNotice && (
-        <div className="fixed bottom-6 left-1/2 z-[90] -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow-2xl backdrop-blur">
+        <div className="fixed bottom-6 left-1/2 z-90 -translate-x-1/2 rounded-full border border-border bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow-2xl backdrop-blur">
           {copyNotice}
         </div>
       )}

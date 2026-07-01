@@ -34,6 +34,8 @@ type TopBarProps = {
     sidebarOpen: boolean;
     onClearConversations: () => void;
     onDeleteThread: (threadId: string) => void;
+    onRequestDeleteThread?: (threadId: string) => void;
+    onRequestClearConversations?: () => void;
     onExportConversations: () => void;
     onNewConversation: () => void;
     onOpenSettings: () => void;
@@ -50,6 +52,8 @@ export function TopBar({
     sidebarOpen,
     onClearConversations,
     onDeleteThread,
+    onRequestDeleteThread,
+    onRequestClearConversations,
     onExportConversations,
     onNewConversation,
     onOpenSettings,
@@ -105,6 +109,12 @@ export function TopBar({
     function deleteActiveConversation() {
         if (!activeThread) return;
 
+        if (onRequestDeleteThread) {
+            onRequestDeleteThread(activeThread.id);
+            closeMenu();
+            return;
+        }
+
         const confirmed = window.confirm(
             `Delete "${activeThread.title}"? This cannot be undone.`,
         );
@@ -117,7 +127,7 @@ export function TopBar({
 
     return (
         <>
-            <header className="relative z-30 flex h-[68px] shrink-0 items-center gap-3 px-3 sm:h-20 sm:px-6">
+            <header className="relative z-30 flex h-17 shrink-0 items-center gap-3 px-3 sm:h-20 sm:px-6">
                 <button
                     onClick={onToggleSidebar}
                     className={`flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted/55 hover:text-foreground ${sidebarOpen ? "md:pointer-events-none md:opacity-0" : ""
@@ -302,6 +312,12 @@ export function TopBar({
                                             icon={<Trash2 size={14} />}
                                             label="Clear all conversations"
                                             onClick={() => {
+                                                if (onRequestClearConversations) {
+                                                    onRequestClearConversations();
+                                                    closeMenu();
+                                                    return;
+                                                }
+
                                                 const confirmed = window.confirm(
                                                     "Clear all conversations? This cannot be undone.",
                                                 );
