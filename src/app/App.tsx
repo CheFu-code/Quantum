@@ -882,6 +882,9 @@ export default function App() {
       return;
     }
     setInput("");
+    if (typeof window !== "undefined" && navigator.vibrate) {
+      navigator.vibrate([50, 25, 50]);
+    }
     const activeAttachments = options.source === "voice" ? [] : attachments;
     if (options.source !== "voice") setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";

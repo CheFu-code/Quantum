@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import NextImage from "next/image";
 import {
+    ChevronDown,
     Code2,
     Copy,
-    ChevronDown,
     Download,
     ExternalLink,
     FileText,
@@ -14,9 +12,11 @@ import {
     RotateCcw,
     Search,
     ThumbsDown,
-    ThumbsUp,
+    ThumbsUp
 } from "lucide-react";
 import { motion } from "motion/react";
+import NextImage from "next/image";
+import { useState, type ReactNode } from "react";
 import { formatTime } from "../_lib/conversations";
 import type { Message, MessageSource, MessageToolActivity } from "../_lib/types";
 import { isMapsSource, MapGroundingCard } from "./MapGroundingCard";
@@ -84,11 +84,11 @@ export function MessageBubble({
                             style={
                                 shouldCollapseUserMessage && !expandedMessage
                                     ? {
-                                          display: "-webkit-box",
-                                          WebkitLineClamp: 4,
-                                          WebkitBoxOrient: "vertical",
-                                          overflow: "hidden",
-                                      }
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: 4,
+                                        WebkitBoxOrient: "vertical",
+                                        overflow: "hidden",
+                                    }
                                     : undefined
                             }
                         >
@@ -99,9 +99,8 @@ export function MessageBubble({
                         <button
                             type="button"
                             onClick={() => setExpandedMessage((prev) => !prev)}
-                            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary transition hover:text-primary/80"
+                            className="mt-2 bg-cyan-950 p-2 rounded-2xl inline-flex items-center gap-1 text-xs font-medium text-primary transition hover:text-primary/80"
                         >
-                            {expandedMessage ? "Show less" : "Show more"}
                             <ChevronDown
                                 size={14}
                                 className={`${expandedMessage ? "rotate-180" : ""} transition-transform duration-200`}

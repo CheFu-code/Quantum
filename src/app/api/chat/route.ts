@@ -403,7 +403,7 @@ export async function POST(request: Request) {
             tier,
         });
         return NextResponse.json(
-            { error: "Quantum could not reach the server. Please try again." },
+            { error: "Quantum could not reach the server. Please check try again." },
             { headers: { "x-request-id": requestId }, status: 502 },
         );
     }
@@ -581,7 +581,8 @@ function streamQuantumResponse({
                         tier,
                     });
                     send("error", {
-                        error: "Quantum could not reach the server. Please try again.",
+                        error: "Quantum could not reach the server. Please check your internet connection and try again.",
+
                     });
                 } finally {
                     controller.close();

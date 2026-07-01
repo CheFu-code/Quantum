@@ -63,7 +63,7 @@ export function SettingsModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
           onClick={onClose}
         >
           <motion.div
@@ -74,7 +74,7 @@ export function SettingsModal({
             className="grid max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-border bg-[#101318] shadow-2xl shadow-black/50 md:grid-cols-[270px_minmax(0,1fr)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <aside className="border-b border-border bg-gradient-to-b from-white/[0.06] to-transparent p-4 md:border-b-0 md:border-r">
+            <aside className="border-b border-border bg-linear-to-b from-white/6 to-transparent p-4 md:border-b-0 md:border-r">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="mb-3 inline-flex size-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
@@ -106,10 +106,10 @@ export function SettingsModal({
                     className={`group flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
                       activeSection === section.id
                         ? "border-primary/35 bg-primary/12 text-foreground"
-                        : "border-transparent text-muted-foreground hover:border-border hover:bg-white/[0.04] hover:text-foreground"
+                        : "border-transparent text-muted-foreground hover:border-border hover:bg-white/4 hover:text-foreground"
                     }`}
                   >
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-primary">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/5 text-primary">
                       <section.icon size={16} />
                     </span>
                     <span className="min-w-0">
@@ -161,7 +161,7 @@ export function SettingsModal({
                   webSearchEnabled={webSearchEnabled}
                 />
 
-                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-white/3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
                       Reset Quantum preferences
