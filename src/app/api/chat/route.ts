@@ -615,8 +615,8 @@ function formatGeminiError(message: string) {
         const projectText = project ? ` (${project})` : "";
 
         return [
-            `Gemini API access is blocked because the Google Cloud project linked to this API key is not in good billing standing${projectText}.`,
-            "Update or re-enable Cloud Billing for that project, or replace GEMINI_API_KEY with a key from an active billing project, then restart Quantum.",
+            `AI features are temporarily unavailable${projectText} due to a service configuration issue.`,
+            "Please try again later or contact support if the issue persists.",
         ].join(" ");
     }
 
