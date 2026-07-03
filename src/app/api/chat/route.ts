@@ -139,7 +139,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
             {
                 error:
-                    "Quantum is not connected to its AI service yet. Add server AI credentials to Quantum/.env.local and restart the dev server.",
+                    "Quantum is not connected to its AI service yet.",
             },
             { headers: { "x-request-id": requestId }, status: 503 },
         );

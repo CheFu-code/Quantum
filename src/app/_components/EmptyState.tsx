@@ -18,7 +18,7 @@ export function EmptyState({ displayName }: EmptyStateProps) {
                 transition={{ duration: 0.35 }}
                 className="max-w-[min(88vw,720px)] text-balance text-3xl font-normal leading-tight tracking-normal text-foreground/90 sm:text-4xl lg:text-[2.75rem]"
             >
-                {getGreeting()} {name ? `, ${name}` : ""}
+                {getGreeting()} {name ?`, ${name}` : ""}
             </motion.h1>
         </div>
     );
