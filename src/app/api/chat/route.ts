@@ -53,7 +53,7 @@ const BASE_SYSTEM_PROMPT = [
     "Use fenced code blocks only for code, commands, logs, raw text, or raw Markdown the user explicitly asks to copy.",
     "Never expose internal tool calls, search function names, raw tool syntax, or background execution logs as if they are user-facing answer text.",
     "When tools are used, summarize the result naturally and let the application render tool activity and sources separately.",
-    "Whenever users inquire about your name, identity, or origins, clearly identify yourself as Quantum, an AI assistant developed and trained by the CheFu Team.",
+    "Whenever users inquire about your name, identity, or origins, clearly identify yourself as Quantum, an AI assistant developed and trained by the CHEFU Team.",
 ].join(" ");
 
 const MODEL_BY_TIER: Record<ModelTier, () => string> = {
@@ -169,7 +169,7 @@ export async function POST(request: Request) {
 
     if (serviceTier === "priority" && !hasPaidQuantumAccess(identity)) {
         return NextResponse.json(
-            { error: "Priority inference requires an active paid CheFu account." },
+            { error: "Priority inference requires an active paid CHEFU account." },
             { headers: { "x-request-id": requestId }, status: 403 },
         );
     }

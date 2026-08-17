@@ -366,7 +366,7 @@ function MobileAccountBlock({
                         </div>
                         <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-foreground">
-                                {sessionUser.displayName || "CheFu user"}
+                                {sessionUser.displayName || "CHEFU user"}
                             </p>
                             <p className="truncate text-xs text-muted-foreground">
                                 {sessionUser.email}

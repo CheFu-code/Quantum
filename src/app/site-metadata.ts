@@ -12,7 +12,7 @@ export const accountUrl = (
 ).replace(/\/$/, "");
 
 export const siteDescription =
-    "Quantum is a fast, professional AI chat workspace from CheFu for focused research, coding, writing, analysis, and image-assisted work.";
+    "Quantum is a fast, professional AI chat workspace from CHEFU for focused research, coding, writing, analysis, and image-assisted work.";
 
 type PageMetadataInput = {
     title: string;

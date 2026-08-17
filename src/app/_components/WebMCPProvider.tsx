@@ -75,7 +75,7 @@ export function WebMCPProvider() {
         execute: () => ({
           name: "Quantum",
           summary:
-            "Quantum is a CheFu AI chat workspace for focused research, coding, writing, analysis, and image-assisted work.",
+            "Quantum is a CHEFU AI chat workspace for focused research, coding, writing, analysis, and image-assisted work.",
           capabilities: [
             "AI chat",
             "model mode selection",

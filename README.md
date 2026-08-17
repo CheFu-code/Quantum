@@ -1,6 +1,6 @@
 # Quantum
 
-Quantum is a CheFu AI chat workspace built with Next.js App Router.
+Quantum is a CHEFU AI chat workspace built with Next.js App Router.
 
 ## Development
 

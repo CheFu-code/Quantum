@@ -13,7 +13,7 @@ const productJsonLd = {
     },
     publisher: {
         "@type": "Organization",
-        name: "CheFu Inc.",
+        name: "CHEFU Inc.",
         url: "https://chefuinc.com",
     },
 };

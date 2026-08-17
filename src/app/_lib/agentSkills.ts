@@ -15,14 +15,14 @@ export const agentSkills: AgentSkill[] = [
     name: "quantum-overview",
     type: "skill-md",
     description:
-      "Understand Quantum as a CheFu AI chat workspace and identify its user-facing capabilities.",
+      "Understand Quantum as a CHEFU AI chat workspace and identify its user-facing capabilities.",
     content: `# Quantum Overview
 
 Use this skill when an agent needs to understand Quantum.
 
 ## Product
 
-${siteName} is a CheFu AI chat workspace.
+${siteName} is a CHEFU AI chat workspace.
 
 ${siteDescription}
 
