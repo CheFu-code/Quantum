@@ -8,7 +8,7 @@ import {
 export function GET() {
   const markdown = `# auth.md
 
-${siteName} uses CheFu Account OAuth/OIDC for agent and user authentication.
+${siteName} uses CHEFU Account OAuth/OIDC for agent and user authentication.
 
 ## Resource
 

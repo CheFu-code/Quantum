@@ -21,7 +21,7 @@ npm run start
 
 ## Auth
 
-Quantum uses the shared CheFu Account sign-in screen:
+Quantum uses the shared CHEFU Account sign-in screen:
 
 ```txt
 https://myaccount.chefuinc.com/login?app=quantum
