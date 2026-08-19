@@ -169,7 +169,7 @@ export async function POST(request: Request) {
 
     if (serviceTier === "priority" && !hasPaidQuantumAccess(identity)) {
         return NextResponse.json(
-            { error: "Priority inference requires an active paid CHEFU account." },
+            { error: "Priority inference requires an active paid account." },
             { headers: { "x-request-id": requestId }, status: 403 },
         );
     }
