@@ -56,11 +56,11 @@ const SUPPORTED_ATTACHMENT_MIME_TYPES = new Set([
 ]);
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefuinc.com";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefu.co.za";
 const CHEFU_ACCOUNT_URL =
-  process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://myaccount.chefuinc.com";
+  process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://myaccount.chefu.co.za";
 const QUANTUM_APP_URL =
-  process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefuinc.com";
+  process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefu.co.za";
 const QUANTUM_MOBILE_SCHEME =
   process.env.NEXT_PUBLIC_QUANTUM_MOBILE_SCHEME || "quantum";
 const QUANTUM_ANDROID_PACKAGE =
@@ -164,22 +164,22 @@ export const INFERENCE_TIERS: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    id: "standard",
-    label: "Standard",
-    description: "Default routing for interactive chat.",
-  },
-  {
-    id: "flex",
-    label: "Flex",
-    description: "Lower-cost best-effort routing for latency-tolerant work.",
-  },
-  {
-    id: "priority",
-    label: "Priority",
-    description: "Premium routing for business-critical requests.",
-  },
-];
+    {
+      id: "standard",
+      label: "Standard",
+      description: "Default routing for interactive chat.",
+    },
+    {
+      id: "flex",
+      label: "Flex",
+      description: "Lower-cost best-effort routing for latency-tolerant work.",
+    },
+    {
+      id: "priority",
+      label: "Priority",
+      description: "Premium routing for business-critical requests.",
+    },
+  ];
 
 export const VOICE_LANGUAGES = [
   { id: "auto", label: "Auto" },
@@ -196,22 +196,22 @@ export const RESPONSE_STYLES: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    id: "concise",
-    label: "Concise",
-    description: "Short answers with the main point first.",
-  },
-  {
-    id: "balanced",
-    label: "Balanced",
-    description: "Helpful structure with enough detail for most work.",
-  },
-  {
-    id: "detailed",
-    label: "Detailed",
-    description: "Longer explanations, tradeoffs, and examples.",
-  },
-];
+    {
+      id: "concise",
+      label: "Concise",
+      description: "Short answers with the main point first.",
+    },
+    {
+      id: "balanced",
+      label: "Balanced",
+      description: "Helpful structure with enough detail for most work.",
+    },
+    {
+      id: "detailed",
+      label: "Detailed",
+      description: "Longer explanations, tradeoffs, and examples.",
+    },
+  ];
 
 export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   autoScroll: true,
@@ -228,9 +228,8 @@ export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
 };
 
 export function apiUrl(path: string) {
-  return `${API_BASE_URL.replace(/\/$/, "")}${
-    path.startsWith("/") ? path : `/${path}`
-  }`;
+  return `${API_BASE_URL.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`
+    }`;
 }
 
 export function resolveStoredModel(value: string | null): QuantumModel {

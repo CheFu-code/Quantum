@@ -212,8 +212,8 @@ export function GET() {
           type: "oauth2",
           flows: {
             authorizationCode: {
-              authorizationUrl: "https://api.chefuinc.com/oauth/authorize",
-              tokenUrl: "https://api.chefuinc.com/oauth/token",
+              authorizationUrl: "https://api.chefu.co.za/oauth/authorize",
+              tokenUrl: "https://api.chefu.co.za/oauth/token",
               scopes: {
                 openid: "OpenID Connect identity",
                 profile: "User profile",

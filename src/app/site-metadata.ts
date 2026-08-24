@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 
 export const siteName = "Quantum";
 export const siteUrl = (
-    process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefuinc.com"
+    process.env.NEXT_PUBLIC_QUANTUM_APP_URL || "https://quantum.chefu.co.za"
 ).replace(/\/$/, "");
 export const apiBaseUrl = (
-    process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefuinc.com"
+    process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chefu.co.za"
 ).replace(/\/$/, "");
 export const accountUrl = (
-    process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://myaccount.chefuinc.com"
+    process.env.NEXT_PUBLIC_CHEFU_ACCOUNT_URL || "https://myaccount.chefu.co.za"
 ).replace(/\/$/, "");
 
 export const siteDescription =

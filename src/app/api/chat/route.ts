@@ -94,7 +94,7 @@ const CHEFU_API_BASE_URL = () =>
     (
         process.env.CHEFU_API_BASE_URL ||
         process.env.NEXT_PUBLIC_API_BASE_URL ||
-        "https://api.chefuinc.com"
+        "https://api.chefu.co.za"
     ).replace(/\/$/, "");
 
 export async function POST(request: Request) {

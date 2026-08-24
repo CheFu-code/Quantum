@@ -21,7 +21,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Quantum | CHEFU AI Assistant",
+    default: "Quantum | AI Assistant",
     template: "%s | Quantum",
   },
   description: siteDescription,
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Quantum | CHEFU AI Assistant",
+    title: "Quantum | AI Assistant",
     description: siteDescription,
     url: "/",
     siteName,
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Quantum | CHEFU AI Assistant",
+    title: "Quantum | AI Assistant",
     description: siteDescription,
   },
   robots: {
