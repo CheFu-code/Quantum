@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "../../_lib/rateLimit";
 import { checkQuantumUsageLimit } from "../../_lib/usageLimit";
+import { validateQuantumServerEnv } from "../../_lib/env";
 import { GeminiPart, GeminiResponse, ToolActivity } from "@/app/_lib/types";
 
 export const runtime = "nodejs";
@@ -134,21 +135,20 @@ export async function POST(request: Request) {
         );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
+    const envResult = validateQuantumServerEnv();
+    if (!envResult.isValid || !envResult.config) {
+        const errorMsg = envResult.isProduction
+            ? "Quantum is not connected to its AI service yet."
+            : (envResult.error?.message || "Missing GEMINI_API_KEY.");
+        console.error(`[Quantum Chat API] Configuration Error: missing ${envResult.missing.join(", ")}`);
         return NextResponse.json(
-            {
-                error:
-                    "Quantum is not connected to its AI service yet.",
-            },
+            { error: errorMsg },
             { headers: { "x-request-id": requestId }, status: 503 },
         );
     }
 
-    const baseUrl = (
-        process.env.GEMINI_API_BASE_URL ||
-        "https://generativelanguage.googleapis.com/v1beta"
-    ).replace(/\/$/, "");
+    const apiKey = envResult.config.geminiApiKey;
+    const baseUrl = envResult.config.geminiApiBaseUrl.replace(/\/$/, "");
     const tier = resolveTier(body.model);
     const identity = await resolveQuantumIdentity(request);
     const serviceTier = resolveServiceTier(body.serviceTier);
