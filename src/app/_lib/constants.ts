@@ -64,7 +64,7 @@ const QUANTUM_APP_URL =
 const QUANTUM_MOBILE_SCHEME =
   process.env.NEXT_PUBLIC_QUANTUM_MOBILE_SCHEME || "quantum";
 const QUANTUM_ANDROID_PACKAGE =
-  process.env.NEXT_PUBLIC_QUANTUM_ANDROID_PACKAGE || "com.chefuinc.quantum";
+  process.env.NEXT_PUBLIC_QUANTUM_ANDROID_PACKAGE || "co.za.chefu.quantum";
 
 export const CHEFU_ACCOUNT_BASE = CHEFU_ACCOUNT_URL.replace(/\/$/, "");
 export const CHEFU_LOGIN_HREF = `${CHEFU_ACCOUNT_BASE}/login?app=quantum&returnTo=${encodeURIComponent(QUANTUM_APP_URL)}`;
