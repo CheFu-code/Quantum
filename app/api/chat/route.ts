@@ -39,6 +39,11 @@ const CHEFU_API_BASE_URL = () =>
         "https://api.chefu.co.za"
     ).replace(/\/$/, "");
 
+const MAX_CHAT_BODY_BYTES = 4 * 1024 * 1024;
+const MAX_MESSAGE_CHARACTERS = 20_000;
+const MAX_HISTORY_ITEM_CHARACTERS = 20_000;
+const MAX_ATTACHMENT_CHARACTERS = 5 * 1024 * 1024;
+
 export async function POST(request: Request) {
     const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
     const startedAt = Date.now();
@@ -66,6 +71,14 @@ export async function POST(request: Request) {
         );
     }
 
+    const contentLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_CHAT_BODY_BYTES) {
+        return NextResponse.json(
+            { error: "Chat request is too large." },
+            { headers: { "x-request-id": requestId }, status: 413 },
+        );
+    }
+
     const body = (await request.json().catch(() => ({}))) as ChatRequest;
     const message = body.message?.trim();
 
@@ -73,6 +86,26 @@ export async function POST(request: Request) {
         return NextResponse.json(
             { error: "A message is required." },
             { headers: { "x-request-id": requestId }, status: 400 },
+        );
+    }
+
+    const hasOversizedPayload =
+        message.length > MAX_MESSAGE_CHARACTERS ||
+        body.history?.some(
+            (item) =>
+                typeof item.content === "string" &&
+                item.content.length > MAX_HISTORY_ITEM_CHARACTERS,
+        ) ||
+        body.attachments?.some(
+            (attachment) =>
+                typeof attachment.data === "string" &&
+                attachment.data.length > MAX_ATTACHMENT_CHARACTERS,
+        );
+
+    if (hasOversizedPayload) {
+        return NextResponse.json(
+            { error: "Chat request contains an oversized field." },
+            { headers: { "x-request-id": requestId }, status: 413 },
         );
     }
 
